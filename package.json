@@ -1,0 +1,15 @@
+{
+  "name": "smart-appointment-platform",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,green \"pnpm --filter @tandem/server dev\" \"pnpm --filter @tandem/client dev\"",
+    "build": "pnpm --filter @tandem/client build",
+    "start": "pnpm --filter @tandem/server start",
+    "test": "pnpm --filter @tandem/server test",
+    "admin:create": "pnpm --filter @tandem/server admin:create"
+  },
+  "devDependencies": {
+    "concurrently": "9.1.2"
+  }
+}
