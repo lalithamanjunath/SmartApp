@@ -1,10 +1,13 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import dns from 'node:dns';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import supertest from 'supertest';
 
+const testDnsServers = ['192.0.2.53', '198.51.100.53'];
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-only-secret-with-more-than-thirty-two-characters';
+process.env.MONGODB_DNS_SERVERS = testDnsServers.join(', ');
 process.env.COOKIE_SAME_SITE = 'lax';
 process.env.COOKIE_SECURE = 'false';
 process.env.CLIENT_ORIGIN = 'http://localhost:3000';
@@ -47,6 +50,7 @@ after(async () => {
 });
 
 test('secure appointment platform integration and booking consistency', async (t) => {
+  assert.deepEqual(dns.getServers(), testDnsServers);
   const memberA = supertest.agent(server);
   const memberB = supertest.agent(server);
   const admin = supertest.agent(server);

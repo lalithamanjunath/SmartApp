@@ -54,6 +54,8 @@ Start the REST API and Vite client together:
 pnpm dev
 ```
 
+The root development command starts only services whose ports are free (API `4000`, client `3000`) and leaves already-running processes untouched. Vite uses strict port binding rather than silently starting a second frontend on another port.
+
 - Vite client: `http://localhost:3000`
 - Express API: `http://localhost:4000`
 - Health check: `http://localhost:4000/api/health`
@@ -67,6 +69,8 @@ The client proxies `/api` to the local Express service. For local use, leave `VI
 3. Copy the Atlas connection URI into `MONGODB_URI`. URL-encode any special characters in the database username or password.
 4. Choose the database name in the URI. The application creates its collections and required indexes when the connection is initialized. Use a dedicated development database for Preview/testing and a separate production database when appropriate.
 5. Atlas deployments support replica-set transactions. A standalone local `mongod` does not provide the same transaction guarantee.
+
+If Node reports an SRV DNS error while the system resolver can resolve Atlas records, set `MONGODB_DNS_SERVERS` to the approved DNS server IPs for the backend host, separated by commas. This setting only configures Node's DNS resolver; it does not change Atlas network access rules.
 
 The project can be used without an Atlas URI for the public landing page and health check, but authentication and durable application features deliberately return a clear service-unavailable error until `MONGODB_URI` and `JWT_SECRET` are configured. No fake login or in-memory production fallback is used.
 
@@ -124,4 +128,4 @@ Appointment dates are stored as ISO `YYYY-MM-DD`, times as 24-hour `HH:mm` UTC v
 - Slot availability is authoritative on the backend. MongoDB transactions, conditional state changes, unique booking references, an idempotency index and a partial unique index prevent conflicting active slot bookings. Cancellation releases the slot atomically.
 - Administrator schedule writes are serialized by unique UTC-day lock documents before overlap checks; parallel overlapping slot creates cannot both succeed. A slot referenced by booking history cannot have its date/time changed or be deleted; its availability may still be changed when no active booking exists.
 - Completed/no-show status changes are only permitted after a booking's scheduled end time. Active booked slots cannot be edited/deleted in a way that invalidates their booking.
-- Review `docs/architecture.md`, `docs/database-design.md` and `docs/api-documentation.md` before operational changes.
+- Review `docs/architecture.md`, `docs/database-design.md` and `docs/api-documentation.md` before operational changes. For end-to-end member, administrator and release steps, see [`docs/application-workflow.md`](docs/application-workflow.md).

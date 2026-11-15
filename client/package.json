@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tailwindcss -i src/tailwind.input -o src/tailwind.generated.css --minify && vite --host 0.0.0.0 --port 3000",
+    "dev": "tailwindcss -i src/tailwind.input -o src/tailwind.generated.css --minify && vite --host 0.0.0.0 --port 3000 --strictPort",
     "build": "tailwindcss -i src/tailwind.input -o src/tailwind.generated.css --minify && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000"
   },

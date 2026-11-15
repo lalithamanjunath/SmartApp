@@ -1,3 +1,4 @@
+import { setServers } from 'node:dns';
 import mongoose from 'mongoose';
 import { env } from './env.js';
 import { User } from '../models/User.js';
@@ -20,6 +21,7 @@ export async function connectDatabase(uri = env.mongoUri) {
   if (connectionPromise) return connectionPromise;
   connectionPromise = (async () => {
     try {
+      if (env.mongoDnsServers.length) setServers(env.mongoDnsServers);
       await mongoose.connect(uri, {
         serverSelectionTimeoutMS: 8000,
         maxPoolSize: 10,

@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "dev": "concurrently -k -n api,web -c blue,green \"pnpm --filter @tandem/server dev\" \"pnpm --filter @tandem/client dev\"",
+    "dev": "node scripts/dev.mjs",
     "build": "pnpm --filter @tandem/client build",
     "start": "pnpm --filter @tandem/server start",
     "test": "pnpm --filter @tandem/server test",
