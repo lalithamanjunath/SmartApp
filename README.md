@@ -60,7 +60,7 @@ The root development command starts only services whose ports are free (API `400
 - Express API: `http://localhost:4000`
 - Health check: `http://localhost:4000/api/health`
 
-The client proxies `/api` to the local Express service. For local use, leave `VITE_API_BASE_URL` empty; do not hardcode a production API URL in source.
+The client proxies `/api` to the local Express service. Vite reads `VITE_`-prefixed settings such as `VITE_API_BASE_URL` from the root `.env`; only `VITE_` variables are exposed to browser code. For local use, leave `VITE_API_BASE_URL` empty to use the proxy; do not hardcode a production API URL in source.
 
 ## MongoDB Atlas
 
