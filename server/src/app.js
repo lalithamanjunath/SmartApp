@@ -13,11 +13,24 @@ import userRoutes from './routes/userRoutes.js';
 
 export const app = express();
 
+const allowedOrigins = new Set(env.clientOrigins);
+
 app.disable('x-powered-by');
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || env.clientOrigins.includes(origin)) return callback(null, true);
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error('This origin is not allowed by CORS.'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+app.options('*', cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
     return callback(new Error('This origin is not allowed by CORS.'));
   },
   credentials: true,

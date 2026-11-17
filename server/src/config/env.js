@@ -8,6 +8,26 @@ const parseBoolean = (value, fallback) => {
   return ['true', '1', 'yes'].includes(String(value).toLowerCase());
 };
 
+export function normalizeOrigin(value) {
+  const candidate = String(value ?? '').trim();
+  if (!candidate) return '';
+
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return candidate.replace(/\/+$/, '');
+  }
+}
+
+export function normalizeOrigins(rawValue) {
+  const list = (rawValue ?? '')
+    .split(',')
+    .map((entry) => normalizeOrigin(entry))
+    .filter(Boolean);
+
+  return [...new Set(list)];
+}
+
 const sameSite = (process.env.COOKIE_SAME_SITE || 'none').toLowerCase();
 
 export const env = {
@@ -20,10 +40,7 @@ export const env = {
     .filter(Boolean),
   jwtSecret: process.env.JWT_SECRET || '',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
-  clientOrigins: (process.env.CLIENT_ORIGIN || 'http://localhost:3000')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+  clientOrigins: normalizeOrigins(process.env.CLIENT_ORIGIN || 'http://localhost:3000'),
   cookieName: 'tandem_session',
   cookieSameSite: ['lax', 'strict', 'none'].includes(sameSite) ? sameSite : 'none',
   cookieSecure: parseBoolean(process.env.COOKIE_SECURE, sameSite === 'none'),
