@@ -42,7 +42,9 @@ try {
   const name = await ask('Administrator name: ');
   const email = (await ask('Administrator email: ')).toLowerCase();
   const password = await askSecret('Administrator password (min 12 characters): ');
-  if (password.length < 12) throw new Error('Password must contain at least 12 characters.');
+  if (password.length < 12 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password) || Buffer.byteLength(password, 'utf8') > 72) {
+    throw new Error('Password must contain at least 12 characters, include a letter and a number, and use at most 72 UTF-8 bytes.');
+  }
   const exists = await User.exists({ email });
   if (exists) throw new Error('An account with that email already exists.');
   await User.create({ name, email, password, role: 'admin' });

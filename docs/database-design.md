@@ -68,6 +68,10 @@ Indexes:
 - Completed and no-show bookings retain their historical slot in booked state; only confirmed future bookings may be cancelled.
 - Administrators may mark a confirmed booking completed or no-show after the slot's end time. The booking record is retained.
 
+## Notifications
+
+Notifications belong to one user and optionally reference a booking. Each record stores an event key, type, title, message, read state/time, appointment date/time and booking reference. Unique event keys prevent duplicate confirmations and reminders; indexes on `{userId, createdAt}` and `{userId, isRead, createdAt}` support inbox and unread-count reads. Confirmations and cancellations commit with the booking transaction. Reminder generation is derived from confirmed bookings and booked slots in MongoDB, so worker restarts do not discard scheduled work; the unique event key makes periodic scans safe to repeat.
+
 ## Transaction and deployment note
 
 MongoDB transactions require a replica set or sharded cluster. Atlas deployments provide replica-set transactions; a standalone local server does not. Booking creation wraps the slot claim plus booking insert, cancellation wraps the booking status plus slot release, and schedule writes wrap the UTC-day lock plus overlap check and slot mutation in session transactions. If a transaction fails, it aborts as a unit. For a standalone local database, do not rely on this cross-document atomicity; run the included replica-set integration suite for transaction coverage.

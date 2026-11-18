@@ -10,12 +10,31 @@ import slotRoutes from './routes/slotRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 export const app = express();
 
 const allowedOrigins = new Set(env.clientOrigins);
 
 app.disable('x-powered-by');
+app.use((req, res, next) => {
+  const startedAt = process.hrtime.bigint();
+  res.once('finish', () => {
+    if (env.nodeEnv !== 'production') return;
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    const record = {
+      method: req.method,
+      route: `${req.baseUrl}${req.route?.path || '/unmatched'}`,
+      status: res.statusCode,
+      durationMs: Number(durationMs.toFixed(1)),
+    };
+    const log = JSON.stringify(record);
+    if (res.statusCode >= 500) console.error('[http-error]', log);
+    else if (durationMs >= 1000) console.warn('[http-slow]', log);
+    else console.info('[http-request]', log);
+  });
+  next();
+});
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
 app.use(cors({
   origin(origin, callback) {
@@ -45,6 +64,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/slots', slotRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use((_req, res) => res.status(404).json({ success: false, message: 'The requested API route was not found.' }));
 app.use(errorHandler);

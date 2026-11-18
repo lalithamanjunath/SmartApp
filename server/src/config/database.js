@@ -5,6 +5,7 @@ import { User } from '../models/User.js';
 import { Slot } from '../models/Slot.js';
 import { Booking } from '../models/Booking.js';
 import { SlotScheduleLock } from '../models/SlotScheduleLock.js';
+import { Notification } from '../models/Notification.js';
 
 mongoose.set('strictQuery', true);
 let connectionPromise = null;
@@ -27,7 +28,13 @@ export async function connectDatabase(uri = env.mongoUri) {
         maxPoolSize: 10,
         autoIndex: env.nodeEnv !== 'production',
       });
-      await Promise.all([User.createIndexes(), Slot.createIndexes(), Booking.createIndexes(), SlotScheduleLock.createIndexes()]);
+      await Promise.all([
+        User.createIndexes(),
+        Slot.createIndexes(),
+        Booking.createIndexes(),
+        SlotScheduleLock.createIndexes(),
+        Notification.createIndexes(),
+      ]);
       return mongoose.connection;
     } catch (error) {
       await mongoose.disconnect();

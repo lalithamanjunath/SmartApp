@@ -14,7 +14,19 @@ Base URL: `<api-origin>/api/v1`. JSON responses use `{ "success": true, "data": 
 | `PATCH /api/v1/users/me` | Signed-in | Update name/email. Duplicate emails return 409. |
 | `PATCH /api/v1/users/me/password` | Signed-in | Change password. Body: `{currentPassword,newPassword}`; verifies the current hash, re-hashes the new password. |
 
-Registration expects a trimmed name of 2–100 characters, valid email up to 254 characters and an 8–128 character password. All protected requests re-check the database user and active status. Deactivated accounts receive 401. Admin-only requests by a normal member receive 403.
+## Notifications
+
+| Method and path | Access | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/notifications?page=1&limit=20` | Signed-in | Return the current member's notifications, unread count and pagination. Limit is 1–50. |
+| `GET /api/v1/notifications/unread-count` | Signed-in | Return the current member's unread notification count. |
+| `PATCH /api/v1/notifications/:id/read` | Owner | Mark one owned notification as read. |
+| `PATCH /api/v1/notifications/read-all` | Signed-in | Mark all of the current member's notifications as read. |
+| `DELETE /api/v1/notifications/:id` | Owner | Delete one owned notification. |
+
+Booking confirmations and eligible cancellations are stored in the same MongoDB transaction as their booking state changes. A MongoDB-backed worker derives 24-hour and 1-hour reminders from confirmed bookings and booked slots once a minute; unique event keys make retries and multiple worker instances idempotent. No Redis service or in-memory appointment timer is required.
+
+Registration expects a trimmed name of 2–100 characters, valid email up to 254 characters and a 12–128 character password containing a letter and number. Passwords are limited to 72 UTF-8 bytes to match bcrypt's effective input limit. Existing shorter passwords may still be used to sign in, but new and changed passwords must meet this rule. All protected requests re-check the database user and active status. Deactivated accounts receive 401. Admin-only requests by a normal member receive 403.
 
 ## Slots
 

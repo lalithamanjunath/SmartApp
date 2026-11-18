@@ -67,7 +67,8 @@ or check the UTC date/time and slot status.
 ## 4. Member: create an account and book
 
 1. Open **Create an account** and enter a name, email, and password. The
-   password must be 8–128 characters. Email is normalized to lowercase and
+   password must be 12–128 characters, include a letter and a number, and use
+   at most 72 UTF-8 bytes. Email is normalized to lowercase and
    must not already belong to an account.
 2. Registration signs the member in. Alternatively, an existing member can
    use **Sign in** with the same email and password used at registration.
@@ -96,7 +97,7 @@ success-shaped confirmation.
 - Cancellation and release of the slot happen together. The cancellation
   record remains in history, and its original date and time are retained.
 - Update personal details in **Profile**. Changing a password requires the
-  current password and a new password of at least 8 characters.
+  current password and a new password that meets the same 12-character strength rule.
 
 ## 6. Administrator: manage bookings and members
 

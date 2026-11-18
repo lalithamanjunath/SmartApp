@@ -20,6 +20,7 @@ let User;
 let Slot;
 let Booking;
 let SlotScheduleLock;
+let Notification;
 let disconnectDatabase;
 
 before(async () => {
@@ -31,12 +32,14 @@ before(async () => {
     import('../src/models/Slot.js'),
     import('../src/models/Booking.js'),
     import('../src/models/SlotScheduleLock.js'),
+    import('../src/models/Notification.js'),
   ]);
   const { app } = await import('../src/app.js');
   User = models[0].User;
   Slot = models[1].Slot;
   Booking = models[2].Booking;
   SlotScheduleLock = models[3].SlotScheduleLock;
+  Notification = models[4].Notification;
   disconnectDatabase = database.disconnectDatabase;
   await database.connectDatabase(process.env.MONGODB_URI);
   server = app.listen(0, '127.0.0.1');
@@ -63,6 +66,8 @@ test('secure appointment platform integration and booking consistency', async (t
     assert.equal(health.headers['x-content-type-options'], 'nosniff');
     const invalidRole = await memberA.post('/api/v1/auth/register').send({ name: 'Morgan Lee', email: 'morgan@example.com', password: 'strong-password-123', role: 'admin' });
     assert.equal(invalidRole.status, 400);
+    const weakPassword = await memberA.post('/api/v1/auth/register').send({ name: 'Morgan Lee', email: 'morgan@example.com', password: 'onlylowercase' });
+    assert.equal(weakPassword.status, 400);
     const registered = await memberA.post('/api/v1/auth/register').send({ name: 'Morgan Lee', email: 'MORGAN@example.com', password: 'strong-password-123' });
     assert.equal(registered.status, 201);
     assert.equal(registered.body.data.user.role, 'user');
@@ -156,11 +161,26 @@ test('secure appointment platform integration and booking consistency', async (t
     assert.equal(myBookings.body.data.bookings.length, 1);
     const otherUser = winningAgent === memberB ? memberC : memberB;
     assert.equal((await otherUser.get(`/api/v1/bookings/${booking._id}`)).status, 404);
+    const inbox = await winningAgent.get('/api/v1/notifications');
+    assert.equal(inbox.status, 200);
+    assert.equal(inbox.body.data.unreadCount, 1);
+    const confirmation = inbox.body.data.notifications.find((item) => item.type === 'booking-confirmed');
+    assert.ok(confirmation);
+    assert.equal(confirmation.metadata.date, futureDate);
+    assert.equal((await otherUser.patch(`/api/v1/notifications/${confirmation._id}/read`)).status, 404);
+    assert.equal((await winningAgent.patch(`/api/v1/notifications/${confirmation._id}/read`)).status, 200);
+    assert.equal((await winningAgent.get('/api/v1/notifications/unread-count')).body.data.count, 0);
     assert.equal((await request.get(`/api/v1/slots?from=${futureDate}&to=${futureDate}`)).body.data.slots.length, 0);
     const tooEarly = await admin.patch(`/api/v1/admin/bookings/${booking._id}/status`).send({ status: 'completed' });
     assert.equal(tooEarly.status, 409);
     assert.equal((await winningAgent.patch(`/api/v1/bookings/${booking._id}/cancel`)).status, 200);
     assert.equal((await Booking.findById(booking._id)).status, 'cancelled');
+    const afterCancellation = await winningAgent.get('/api/v1/notifications');
+    assert.ok(afterCancellation.body.data.notifications.some((item) => item.type === 'booking-cancelled'));
+    assert.equal((await winningAgent.patch('/api/v1/notifications/read-all')).status, 200);
+    const cancellationNotice = afterCancellation.body.data.notifications.find((item) => item.type === 'booking-cancelled');
+    assert.equal((await winningAgent.delete(`/api/v1/notifications/${cancellationNotice._id}`)).status, 200);
+    assert.equal((await otherUser.delete(`/api/v1/notifications/${confirmation._id}`)).status, 404);
     assert.equal((await Slot.findById(slotId)).status, 'available');
     assert.equal((await request.get(`/api/v1/slots?from=${futureDate}&to=${futureDate}`)).body.data.slots.length, 1);
     const historySlot = (await admin.get(`/api/v1/admin/slots?from=${futureDate}&to=${futureDate}`)).body.data.slots.find((slot) => slot._id === slotId);
@@ -169,6 +189,41 @@ test('secure appointment platform integration and booking consistency', async (t
     assert.equal(historyEdit.status, 409);
     assert.equal((await admin.delete(`/api/v1/admin/slots/${slotId}`)).status, 409);
     assert.equal((await Slot.findById(slotId)).startTime, '13:00');
+  });
+
+  await t.test('persistent reminder generation is due-based, idempotent and status-aware', async () => {
+    const owner = await User.create({ name: 'Reminder Member', email: 'reminder@example.com', password: 'reminder-password-123' });
+    const adminId = (await User.findOne({ role: 'admin' }))._id;
+    const reminderStart = new Date(Date.now() + 30 * 60 * 60 * 1000);
+    const fixtures = [];
+    for (let index = 0; index < 3; index += 1) {
+      const start = new Date(reminderStart.getTime() + index * 30 * 60 * 1000);
+      const date = start.toISOString().slice(0, 10);
+      const startTime = start.toISOString().slice(11, 16);
+      const endTime = new Date(start.getTime() + 30 * 60 * 1000).toISOString().slice(11, 16);
+      const slot = await Slot.create({ date, startTime, endTime, status: 'booked', createdBy: adminId });
+      const statuses = ['confirmed', 'cancelled', 'completed'];
+      const booking = await Booking.create({
+        userId: owner._id,
+        slotId: slot._id,
+        bookingReference: `TDM-${date.replaceAll('-', '')}-REM${index}00`,
+        status: statuses[index],
+      });
+      fixtures.push({ slot, booking });
+    }
+
+    const dueAt = new Date(reminderStart.getTime() - 23 * 60 * 60 * 1000);
+    const { generateDueReminders } = await import('../src/services/reminderService.js');
+    assert.equal(await generateDueReminders(dueAt), 1);
+    assert.equal(await generateDueReminders(dueAt), 0);
+    assert.equal(await Notification.countDocuments({ appointmentId: fixtures[0].booking._id, type: 'reminder-24h' }), 1);
+    assert.equal(await Notification.countDocuments({ type: 'reminder-1h' }), 0);
+
+    const oneHourDueAt = new Date(reminderStart.getTime() - 30 * 60 * 1000);
+    assert.equal(await generateDueReminders(oneHourDueAt), 1);
+    assert.equal(await generateDueReminders(oneHourDueAt), 0);
+    assert.equal(await Notification.countDocuments({ appointmentId: fixtures[0].booking._id, type: 'reminder-1h' }), 1);
+    assert.equal(await Notification.countDocuments({ appointmentId: { $in: fixtures.slice(1).map(({ booking }) => booking._id) } }), 0);
   });
 
   await t.test('same-user idempotency returns one booking and admin filters/details hide secrets', async () => {
@@ -195,7 +250,7 @@ test('secure appointment platform integration and booking consistency', async (t
     assert.ok(Array.isArray(personDetails.body.data.bookings));
     const dashboard = await admin.get('/api/v1/admin/dashboard');
     assert.equal(dashboard.status, 200);
-    assert.equal(dashboard.body.data.stats.totalUsers, 3);
+    assert.equal(dashboard.body.data.stats.totalUsers, 4);
     assert.equal((await admin.get('/api/v1/admin/analytics')).status, 200);
   });
 
@@ -205,6 +260,7 @@ test('secure appointment platform integration and booking consistency', async (t
     assert.equal(profile.body.data.user.name, 'Morgan R. Lee');
     assert.equal(Object.hasOwn(profile.body.data.user, 'password'), false);
     assert.equal((await memberA.patch('/api/v1/users/me/password').send({ currentPassword: 'strong-password-123', newPassword: 'new-strong-password-456' })).status, 200);
+    assert.equal((await memberA.patch('/api/v1/users/me/password').send({ currentPassword: 'new-strong-password-456', newPassword: 'weakpasswordonly' })).status, 400);
 
     const pastDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const historicalSlot = await Slot.create({ date: pastDate, startTime: '10:00', endTime: '10:30', status: 'booked', createdBy: (await User.findOne({ role: 'admin' }))._id });
@@ -252,12 +308,20 @@ test('secure appointment platform integration and booking consistency', async (t
   });
 
   await t.test('unique MongoDB indexes exist for identities, references, active bookings and idempotency', async () => {
-    const [users, slots, bookings, scheduleLocks] = await Promise.all([User.collection.indexes(), Slot.collection.indexes(), Booking.collection.indexes(), SlotScheduleLock.collection.indexes()]);
+    const [users, slots, bookings, scheduleLocks, notifications] = await Promise.all([
+      User.collection.indexes(),
+      Slot.collection.indexes(),
+      Booking.collection.indexes(),
+      SlotScheduleLock.collection.indexes(),
+      Notification.collection.indexes(),
+    ]);
     assert.ok(users.some((index) => index.key.email === 1 && index.unique));
     assert.ok(slots.some((index) => index.key.date === 1 && index.key.startTime === 1 && index.unique));
     assert.ok(bookings.some((index) => index.name === 'one_active_booking_per_slot' && index.unique));
     assert.ok(bookings.some((index) => index.name === 'user_idempotency_key' && index.unique));
     assert.ok(bookings.some((index) => index.key.bookingReference === 1 && index.unique));
     assert.ok(scheduleLocks.some((index) => index.name === 'unique_schedule_lock_per_utc_day' && index.unique));
+    assert.ok(notifications.some((index) => index.key.eventKey === 1 && index.unique));
+    assert.ok(notifications.some((index) => index.key.userId === 1 && index.key.isRead === 1));
   });
 });

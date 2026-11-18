@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import { Booking } from '../models/Booking.js';
 import { Slot } from '../models/Slot.js';
+import { createAppointmentNotification } from './notificationService.js';
 import { env } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 import { slotStart } from '../utils/time.js';
@@ -39,6 +40,13 @@ export async function createBooking({ userId, slotId, idempotencyKey }) {
         ...(idempotencyKey ? { idempotencyKey } : {}),
       }], { session });
       bookingId = created._id;
+      await createAppointmentNotification({
+        userId,
+        booking: created,
+        slot: claimed,
+        type: 'booking-confirmed',
+        session,
+      });
     }, { readPreference: 'primary', readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
   } catch (error) {
     if (error.code === 11000) throw new ApiError(409, 'This slot or request has already been booked. Refresh and review your appointments.');
@@ -85,6 +93,13 @@ export async function cancelBooking(userId, id) {
       if (!changed) throw new ApiError(409, 'This appointment has already changed. Refresh your appointments.');
       const released = await Slot.findOneAndUpdate({ _id: slot._id, status: 'booked' }, { $set: { status: 'available' } }, { new: true, session });
       if (!released) throw new ApiError(409, 'The slot could not be released. No cancellation was saved.');
+      await createAppointmentNotification({
+        userId,
+        booking: changed,
+        slot,
+        type: 'booking-cancelled',
+        session,
+      });
       updatedId = changed._id;
     }, { readPreference: 'primary', readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
   } finally {

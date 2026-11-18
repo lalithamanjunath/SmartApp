@@ -28,7 +28,9 @@ During local development Vite serves port 3000 and proxies `/api/*` to Express o
 
 ## Server modules
 
-`server/src/app.js` assembles Helmet, credentialed CORS, JSON parsing, health/API routes, 404 handling and safe centralized errors. `server/src/server.js` starts Express and attempts the configured Atlas connection. Routes delegate to controllers; Zod validates public request shapes; auth middleware verifies HS256 tokens and reloads active users; role middleware enforces admin-only APIs; services own slot and booking invariants.
+`server/src/app.js` assembles Helmet, credentialed CORS, JSON parsing, health/API routes, 404 handling and safe centralized errors. `server/src/server.js` starts Express and attempts the configured Atlas connection. Routes delegate to controllers; Zod validates public request shapes; auth middleware verifies HS256 tokens and reloads active users; role middleware enforces admin-only APIs; services own slot and booking invariants. Authenticated members can read and manage their own in-app notifications. A MongoDB-derived worker periodically creates due reminders with unique event keys, so a process restart does not lose reminder work.
+
+In production, the API logs request method, route template, response status and duration without query strings or credentials. Responses over one second are marked as slow and 5xx responses as errors. Database-query-level timings and production latency baselines are not currently available.
 
 `requireDatabase` fails closed when Atlas is not configured or unavailable. The landing page and `/api/health` can load without credentials, but persistence-dependent routes return `503` rather than simulating successful operations. The database connector explicitly creates required model indexes after the connection succeeds.
 

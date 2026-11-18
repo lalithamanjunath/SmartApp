@@ -27,3 +27,16 @@ The passing API tests exercise member-only registration (including rejected admi
 ## Known limits
 
 The public guest UI and its validation states were browser-tested, but the authenticated member/admin surfaces, live successful sign-in, real account creation, bookings and durable reads/writes could not be exercised until a valid MongoDB Atlas URI is stored as the project's protected `MONGODB_URI`. The health route intentionally stays public and answers with database state; persistence-dependent endpoints fail safely rather than switching to fake or in-memory production data. Test form values used the reserved `.invalid` domain and did not create records. Vercel and Render configuration files are deployment preparation only—neither provider was connected or deployed.
+
+## Follow-up verification — 2026-11-18
+
+After adding in-app notifications, database-derived appointment reminders, password-strength validation and production request-duration logging:
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| API tests | Pass | `pnpm test`: 12 tests passed, 0 failed. Added coverage for confirmation/cancellation notifications, notification ownership/read/delete, reminder due windows, duplicate prevention, inactive booking filtering and password-strength rejection. |
+| Frontend production build | Pass | `pnpm build` completed. Initial entry bundle: 445.80 kB (136.76 kB gzip); updated entry bundle: 446.59 kB (136.94 kB gzip). The notification bell is a separate 11.94 kB (3.18 kB gzip) lazy chunk. This is not evidence of a latency improvement. |
+| Patch whitespace | Pass | `git diff --check` reported no whitespace errors. |
+| Database teardown | Pass | The final test run completed without teardown errors. An earlier intermediate run printed a MongoDB Memory Server `ECONNRESET`; baseline and final test exit statuses were both 0. |
+
+No Atlas-backed or production request-latency benchmark was run. Notification date/time messages use UTC; the current slot model has no provider/service identity fields, and the existing app has no rescheduling workflow or email-delivery configuration.

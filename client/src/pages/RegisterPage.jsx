@@ -15,7 +15,9 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   async function submit(event) {
     event.preventDefault(); setError('');
-    if (form.password.length < 8) { setError('Use at least 8 characters for your password.'); return; }
+    if (form.password.length < 12 || !/[A-Za-z]/.test(form.password) || !/[0-9]/.test(form.password) || new TextEncoder().encode(form.password).length > 72) {
+      setError('Use at least 12 characters with a letter and a number (maximum 72 UTF-8 bytes).'); return;
+    }
     if (form.password !== form.confirmPassword) { setError('Those passwords do not match yet.'); return; }
     setBusy(true);
     try {
@@ -29,7 +31,7 @@ export default function RegisterPage() {
         {error && <div className="form-error" role="alert">{error}</div>}
         <label>Your name<input autoComplete="name" required minLength={2} maxLength={100} placeholder="Alex Morgan" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
         <label>Email address<input type="email" autoComplete="email" required maxLength={254} placeholder="you@company.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-        <label>Password<span className="password-field"><input type={showPassword ? 'text' : 'password'} autoComplete="new-password" required minLength={8} maxLength={128} placeholder="At least 8 characters" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></label>
+        <label>Password<span className="password-field"><input type={showPassword ? 'text' : 'password'} autoComplete="new-password" required minLength={12} maxLength={128} placeholder="12+ characters, with a letter and number" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></label>
         <label>Confirm password<input type="password" autoComplete="new-password" required maxLength={128} placeholder="Type it once more" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })} /></label>
         <button className="button button-primary button-full" disabled={busy}>{busy ? 'Creating your account…' : <>Create account <ArrowRight size={16} /></>}</button>
       </form>

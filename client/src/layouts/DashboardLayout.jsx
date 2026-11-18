@@ -1,9 +1,11 @@
+import { lazy, Suspense, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Activity, CalendarDays, CalendarPlus, ChevronDown, CircleHelp, LayoutDashboard, LogOut, Menu, Settings2, ShieldCheck, Users, X } from 'lucide-react';
-import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Brand } from '../components/Brand.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+
+const NotificationBell = lazy(() => import('../components/NotificationBell.jsx').then((module) => ({ default: module.NotificationBell })));
 
 const userLinks = [
   { to: '/app/dashboard', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -43,7 +45,7 @@ export function DashboardLayout({ role }) {
     {open && <button className="sidebar-backdrop" aria-label="Close menu" onClick={() => setOpen(false)} />}
     <main className="workspace-main">
       <header className="workspace-topbar"><button className="sidebar-toggle" onClick={() => setOpen(!open)} aria-label={open ? 'Close navigation' : 'Open navigation'}>{open ? <X size={20} /> : <Menu size={20} />}</button><div className="breadcrumbs"><span>{admin ? 'Administration' : 'My workspace'}</span><span className="crumb-dot">/</span><span className="crumb-current">{admin ? 'Tandem for teams' : 'Personal schedule'}</span></div>
-        <div className="topbar-right"><a href="mailto:support@example.com" className="help-link"><CircleHelp size={17} /><span>Help</span></a><span className="topbar-divider" /><div className="account-menu"><div className="avatar">{user?.name?.slice(0, 1)?.toUpperCase() || 'T'}</div><div className="account-copy"><strong>{user?.name || 'Account'}</strong><small>{admin ? 'Administrator' : 'Member'}</small></div><ChevronDown size={15} className="account-chevron" /><span className="sr-only">Activity icon</span><Activity className="topbar-spark" size={15} /></div></div>
+        <div className="topbar-right">{!admin && <Suspense fallback={<span className="h-10 w-10" />}><NotificationBell /></Suspense>}<a href="mailto:support@example.com" className="help-link"><CircleHelp size={17} /><span>Help</span></a><span className="topbar-divider" /><div className="account-menu"><div className="avatar">{user?.name?.slice(0, 1)?.toUpperCase() || 'T'}</div><div className="account-copy"><strong>{user?.name || 'Account'}</strong><small>{admin ? 'Administrator' : 'Member'}</small></div><ChevronDown size={15} className="account-chevron" /><span className="sr-only">Activity icon</span><Activity className="topbar-spark" size={15} /></div></div>
       </header>
       <div className="workspace-content"><Outlet /></div>
     </main>
