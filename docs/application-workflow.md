@@ -140,11 +140,16 @@ Vercel alone hosts only the SPA.
    in `CLIENT_ORIGIN`, `COOKIE_SAME_SITE=none`, and `COOKIE_SECURE=true`.
    Render provides `PORT`.
 3. To enable account recovery and appointment email, also configure
-    `CLIENT_APP_URL`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`,
-    `RESEND_WEBHOOK_SECRET` and a base64-encoded 32-byte
-    `EMAIL_ENCRYPTION_KEY`. Register `https://<your-render-service>.onrender.com/api/webhooks/resend`
-    in Resend with the delivery events described in the README. Keep all of
-    these values on the backend.
+   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_WEBHOOK_SECRET` and
+   `EMAIL_ENCRYPTION_KEY` in Render's Environment settings. The webhook secret
+   is normally `whsec_` plus base64 key bytes; the encryption key must decode
+   to exactly 32 bytes. `CLIENT_APP_URL` is the public frontend origin required
+   for password-reset links. The Render blueprint marks these values
+   `sync: false`, so declaring them in `render.yaml` does not populate them.
+   Configure `https://<your-render-service>.onrender.com/api/webhooks/resend`
+   as the endpoint URL in Resend and copy its signing secret to
+   `RESEND_WEBHOOK_SECRET`; these are different values. Keep the secrets on the
+   backend.
 4. Deploy and verify the service's `/api/health` reports the database as
    connected.
 5. Create the administrator using `pnpm admin:create` in an authorized
@@ -190,7 +195,8 @@ intended environment.
 | --- | --- |
 | Database reports disconnected or authentication failure | Check the API host's `MONGODB_URI`, Atlas database-user password, URL-encoding of special characters, and Atlas network access. Restart/redeploy the API after changing a secret. |
 | Sign-in or registration returns service unavailable | Verify Atlas health and the API's private `JWT_SECRET`. |
-| Reset email is not sent | Confirm all Resend, webhook, encryption-key and client-URL environment values are set on the API; review non-secret worker logs and Resend delivery events. |
+| Email delivery is disabled | Read the startup warning for the missing/invalid variable NAMES, then set the required variables in Render's Environment settings and redeploy/restart. The warning never prints values. |
+| Reset email is not sent | In addition to the four email-worker variables, confirm `CLIENT_APP_URL` is the public frontend origin; review non-secret worker logs and Resend delivery events. |
 | Booking calendar has no available dates | Create future slots as an administrator; confirm slots are `available` and use UTC. |
 | Sign-in works locally but not on the deployed site | Check HTTPS, the Vercel `VITE_API_BASE_URL`, Render `CLIENT_ORIGIN`, and `COOKIE_SAME_SITE=none` with `COOKIE_SECURE=true`. Browser third-party-cookie restrictions can affect cross-origin cookie sessions. |
 | Browser reports 500 on `/api/v1/auth/csrf`, or CORS 403 after the API update | Check the browser request's exact `Origin` header and add that frontend origin to Render's `CLIENT_ORIGIN` allowlist. Do not use a wildcard with credentialed CORS. |

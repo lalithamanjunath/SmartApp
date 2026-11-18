@@ -116,15 +116,15 @@ Render supplies `PORT`. Do not add wildcard credentialed CORS origins. After the
 
 ### Resend email
 
-Configure these values only in the backend environment (or local ignored `.env`) to enable delivery:
+Configure these values in the Render service's **Environment** settings (or local ignored `.env`). The Render blueprint declares them as `sync: false`, so each value must be supplied in the service configuration:
 
-- `RESEND_API_KEY`: private Resend API key.
-- `RESEND_FROM_EMAIL`: verified sender address.
-- `RESEND_WEBHOOK_SECRET`: Svix signing secret for the Resend webhook.
-- `EMAIL_ENCRYPTION_KEY`: base64-encoded 32-byte random key. Generate locally with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
-- `CLIENT_APP_URL`: public frontend origin used to construct password-reset links.
+- `RESEND_API_KEY`: private Resend API key (the application checks that it is non-empty; Resend validates the key when sending).
+- `RESEND_FROM_EMAIL`: sender in Resend's accepted format, such as `Tandem <noreply@your-verified-domain.example>`; the address/domain must be verified with Resend. The application checks that it is non-empty.
+- `RESEND_WEBHOOK_SECRET`: signing secret copied from the Resend webhook configuration, normally `whsec_` followed by base64-encoded key bytes. The application checks that the suffix is valid base64. Raw base64 is also accepted.
+- `EMAIL_ENCRYPTION_KEY`: canonical base64 encoding of exactly 32 random bytes. Generate it locally with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"` and store it as a private backend variable.
+- `CLIENT_APP_URL`: public frontend origin (for example `https://your-site.example`), used to construct password-reset links. Appointment email delivery can run without this value, but password-reset email requests require it.
 
-In Resend, configure the webhook URL as `https://<your-render-service>.onrender.com/api/webhooks/resend` and subscribe to sent, delivered, delayed, failed, bounced, complained and suppressed events. Never add these private values to Vercel or a `VITE_` variable. Without complete email configuration, database notifications continue working and email delivery remains disabled.
+The email worker requires the first four variables; a missing or invalid encryption/webhook key disables it. Startup logs name missing or invalid variables without printing their values. The `CLIENT_APP_URL` warning is separate because it only affects password-reset links. In Resend, set the webhook endpoint URL to `https://<your-render-service>.onrender.com/api/webhooks/resend` and subscribe to sent, delivered, delayed, failed, bounced, complained and suppressed events. That URL belongs in Resend's webhook settings; `RESEND_WEBHOOK_SECRET` is the signing secret, not the URL. Never add private values to Vercel or a `VITE_` variable. Without complete email configuration, database notifications continue working and email delivery remains disabled.
 
 For managed Preview, the project uses protected `MONGODB_URI` and `JWT_SECRET` values. Keep separate development and production secrets/data stores where possible; the platform's protected secret input stores credentials without putting them in the repository or chat.
 

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { EmailDelivery } from '../models/EmailDelivery.js';
-import { env } from '../config/env.js';
+import { getResendWebhookSigningKey } from '../config/email.js';
 import { ApiError } from '../utils/ApiError.js';
 
 const trackedEvents = {
@@ -13,13 +13,10 @@ const trackedEvents = {
   'email.suppressed': 'failed',
 };
 
-function isValidSignature(rawBody, { id, timestamp, signature }, secret) {
+function isValidSignature(rawBody, { id, timestamp, signature }, key) {
   if (!id || !timestamp || !signature || !/^\d+$/.test(timestamp)) return false;
   const timestampSeconds = Number(timestamp);
   if (!Number.isSafeInteger(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300) return false;
-  const encodedSecret = secret.startsWith('whsec_') ? secret.slice(6) : secret;
-  const key = Buffer.from(encodedSecret, 'base64');
-  if (!key.length) return false;
   const signedContent = `${id}.${timestamp}.${rawBody}`;
   const expected = crypto.createHmac('sha256', key).update(signedContent).digest();
   return signature.split(' ').some((entry) => {
@@ -31,10 +28,11 @@ function isValidSignature(rawBody, { id, timestamp, signature }, secret) {
 }
 
 export async function verifyResendWebhook(rawBody, headers) {
-  if (!env.resendWebhookSecret) throw new ApiError(503, 'Email delivery webhooks are not configured.');
+  const key = getResendWebhookSigningKey();
+  if (!key) throw new ApiError(503, 'Email delivery webhooks are not configured.');
   if (!Buffer.isBuffer(rawBody)) throw new ApiError(400, 'Invalid webhook request.');
   const body = rawBody.toString('utf8');
-  if (!isValidSignature(body, headers, env.resendWebhookSecret)) throw new ApiError(400, 'Invalid webhook signature.');
+  if (!isValidSignature(body, headers, key)) throw new ApiError(400, 'Invalid webhook signature.');
 
   let event;
   try {

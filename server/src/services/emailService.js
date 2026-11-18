@@ -1,22 +1,20 @@
 import crypto from 'node:crypto';
 import { EmailDelivery } from '../models/EmailDelivery.js';
 import { env } from '../config/env.js';
+import {
+  getEmailDeliveryConfigurationIssues,
+  getEmailEncryptionKey,
+  isEmailDeliveryConfigured,
+} from '../config/email.js';
 import { ApiError } from '../utils/ApiError.js';
+
+export { getEmailDeliveryConfigurationIssues, isEmailDeliveryConfigured } from '../config/email.js';
 
 const RESEND_EMAILS_URL = 'https://api.resend.com/emails';
 const MAX_ATTEMPTS = 8;
 const REQUEST_TIMEOUT_MS = 10_000;
 const LEASE_MS = 30_000;
 const PROVIDER_IDEMPOTENCY_WINDOW_MS = 23 * 60 * 60 * 1000;
-
-function encryptionKey() {
-  const key = Buffer.from(env.emailEncryptionKey, 'base64');
-  return key.length === 32 ? key : null;
-}
-
-export function isEmailDeliveryConfigured() {
-  return Boolean(env.resendApiKey && env.resendFromEmail && env.resendWebhookSecret && encryptionKey());
-}
 
 export function requireEmailDeliveryConfiguration({ requireClientUrl = false } = {}) {
   if (!isEmailDeliveryConfigured() || (requireClientUrl && !env.clientAppUrl)) {
@@ -25,7 +23,7 @@ export function requireEmailDeliveryConfiguration({ requireClientUrl = false } =
 }
 
 function encryptPayload(payload) {
-  const key = encryptionKey();
+  const key = getEmailEncryptionKey();
   if (!key) throw new ApiError(503, 'Email delivery is not configured.');
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -41,7 +39,7 @@ function encryptPayload(payload) {
 }
 
 export function decryptEmailPayload(payloadCiphertext) {
-  const key = encryptionKey();
+  const key = getEmailEncryptionKey();
   if (!key) throw new Error('Email encryption key is unavailable.');
   const [encodedIv, encodedTag, encodedCiphertext] = payloadCiphertext.split('.');
   if (!encodedIv || !encodedTag || !encodedCiphertext) throw new Error('Queued email payload is malformed.');

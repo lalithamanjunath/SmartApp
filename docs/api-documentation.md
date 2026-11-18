@@ -90,7 +90,7 @@ The API queues appointment confirmations, cancellations, reschedules, reminders,
 | --- | --- | --- |
 | `POST /api/webhooks/resend` | Resend webhook signature | Track provider delivery events. Configure this exact backend URL in Resend and subscribe to sent, delivered, delayed, failed, bounced, complained and suppressed events. |
 
-Set backend-only `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_WEBHOOK_SECRET`, `EMAIL_ENCRYPTION_KEY` and `CLIENT_APP_URL`. Never configure the provider key or encryption key in Vercel `VITE_` variables. Email delivery records are internal and are not exposed through a member API.
+Set backend-only `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_WEBHOOK_SECRET` and `EMAIL_ENCRYPTION_KEY` to enable the email worker. The encryption key must be canonical base64 for exactly 32 bytes; the webhook secret is normally `whsec_` plus base64 key bytes. `CLIENT_APP_URL` is additionally required for password-reset links, but not for appointment email delivery. Startup warnings report missing or invalid variable names only, never values. Never configure the provider key or encryption key in Vercel `VITE_` variables. Email delivery records are internal and are not exposed through a member API.
 
 ## Status codes and safety
 

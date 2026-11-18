@@ -1,5 +1,6 @@
 import { app } from './app.js';
 import { env } from './config/env.js';
+import { getEmailDeliveryConfigurationIssues } from './config/email.js';
 import { connectDatabase } from './config/database.js';
 import { startReminderScheduler } from './services/reminderService.js';
 import { isEmailDeliveryConfigured, startEmailWorker } from './services/emailService.js';
@@ -18,8 +19,16 @@ const server = app.listen(env.port, '0.0.0.0', () => {
       stopReminderScheduler = startReminderScheduler();
       if (isEmailDeliveryConfigured()) {
         stopEmailWorker = startEmailWorker();
+        console.info('Email delivery worker started; local configuration checks passed.');
       } else {
-        console.warn('Email delivery is disabled. Configure Resend and email encryption environment variables to enable it.');
+        const { missing, invalid } = getEmailDeliveryConfigurationIssues();
+        const details = [];
+        if (missing.length) details.push(`missing: ${missing.join(', ')}`);
+        if (invalid.length) details.push(`invalid: ${invalid.join(', ')}`);
+        console.warn(`Email delivery is disabled. ${details.join('; ')}.`);
+      }
+      if (!env.clientAppUrl) {
+        console.warn('Password reset email links are unavailable. Missing configuration variable: CLIENT_APP_URL.');
       }
     })
     .catch((error) => console.error('MongoDB Atlas connection failed:', error.name || 'Error', error.code || ''));

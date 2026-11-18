@@ -32,6 +32,48 @@ let disconnectDatabase;
 let memberC;
 let originalMemberCookie;
 
+test('email configuration diagnostics report only missing or invalid variable names', async () => {
+  const { env } = await import('../src/config/env.js');
+  const {
+    getEmailDeliveryConfigurationIssues,
+    isEmailDeliveryConfigured,
+  } = await import('../src/config/email.js');
+
+  const original = {
+    resendApiKey: env.resendApiKey,
+    resendFromEmail: env.resendFromEmail,
+    resendWebhookSecret: env.resendWebhookSecret,
+    emailEncryptionKey: env.emailEncryptionKey,
+  };
+  try {
+    env.resendApiKey = '';
+    env.resendFromEmail = '';
+    env.resendWebhookSecret = '';
+    env.emailEncryptionKey = '';
+    assert.deepEqual(getEmailDeliveryConfigurationIssues(), {
+      missing: ['RESEND_API_KEY', 'RESEND_FROM_EMAIL', 'RESEND_WEBHOOK_SECRET', 'EMAIL_ENCRYPTION_KEY'],
+      invalid: [],
+    });
+    assert.equal(isEmailDeliveryConfigured(), false);
+
+    env.resendApiKey = 're_test_key';
+    env.resendFromEmail = 'Tandem <noreply@example.com>';
+    env.resendWebhookSecret = 'not-a-webhook-secret';
+    env.emailEncryptionKey = Buffer.alloc(16, 1).toString('base64');
+    assert.deepEqual(getEmailDeliveryConfigurationIssues(), {
+      missing: [],
+      invalid: ['RESEND_WEBHOOK_SECRET', 'EMAIL_ENCRYPTION_KEY'],
+    });
+
+    env.resendWebhookSecret = `whsec_${Buffer.alloc(32, 8).toString('base64')}`;
+    env.emailEncryptionKey = Buffer.alloc(32, 7).toString('base64');
+    assert.deepEqual(getEmailDeliveryConfigurationIssues(), { missing: [], invalid: [] });
+    assert.equal(isEmailDeliveryConfigured(), true);
+  } finally {
+    Object.assign(env, original);
+  }
+});
+
 before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   process.env.MONGODB_URI = replica.getUri();
