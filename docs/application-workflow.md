@@ -81,7 +81,8 @@ or check the UTC date/time and slot status.
 The current application does not send an email-verification message. A
 valid-looking email address is accepted, but ownership is not verified.
 Sessions use an HTTP-only cookie; the JWT is not exposed to browser
-JavaScript.
+JavaScript. Use **Forgot your password?** on the sign-in page to request a
+single-use reset link; it expires after 30 minutes.
 
 If a selected slot is booked by someone else before confirmation, refresh the
 calendar and select another time. A booking failure does not create a
@@ -94,6 +95,10 @@ success-shaped confirmation.
 - Cancel an eligible confirmed booking from its details page. By default,
   cancellation must be at least 24 hours before the slot start; the policy is
   controlled by `CANCELLATION_CUTOFF_HOURS`.
+- Reschedule from the details page by choosing a date and a live available
+  slot. Rescheduling is subject to the same cutoff, and the change is
+  transactional: the new slot is secured before the old slot is released.
+  Previous appointment times remain visible in the booking history.
 - Cancellation and release of the slot happen together. The cancellation
   record remains in history, and its original date and time are retained.
 - Update personal details in **Profile**. Changing a password requires the
@@ -134,9 +139,15 @@ Vercel alone hosts only the SPA.
    `MONGODB_URI`, a strong private `JWT_SECRET`, the exact Vercel HTTPS origin
    in `CLIENT_ORIGIN`, `COOKIE_SAME_SITE=none`, and `COOKIE_SECURE=true`.
    Render provides `PORT`.
-3. Deploy and verify the service's `/api/health` reports the database as
+3. To enable account recovery and appointment email, also configure
+    `CLIENT_APP_URL`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`,
+    `RESEND_WEBHOOK_SECRET` and a base64-encoded 32-byte
+    `EMAIL_ENCRYPTION_KEY`. Register `https://<your-render-service>.onrender.com/api/webhooks/resend`
+    in Resend with the delivery events described in the README. Keep all of
+    these values on the backend.
+4. Deploy and verify the service's `/api/health` reports the database as
    connected.
-4. Create the administrator using `pnpm admin:create` in an authorized
+5. Create the administrator using `pnpm admin:create` in an authorized
    Render shell.
 
 ### Vercel frontend
@@ -179,6 +190,7 @@ intended environment.
 | --- | --- |
 | Database reports disconnected or authentication failure | Check the API host's `MONGODB_URI`, Atlas database-user password, URL-encoding of special characters, and Atlas network access. Restart/redeploy the API after changing a secret. |
 | Sign-in or registration returns service unavailable | Verify Atlas health and the API's private `JWT_SECRET`. |
+| Reset email is not sent | Confirm all Resend, webhook, encryption-key and client-URL environment values are set on the API; review non-secret worker logs and Resend delivery events. |
 | Booking calendar has no available dates | Create future slots as an administrator; confirm slots are `available` and use UTC. |
 | Sign-in works locally but not on the deployed site | Check HTTPS, the Vercel `VITE_API_BASE_URL`, Render `CLIENT_ORIGIN`, and `COOKIE_SAME_SITE=none` with `COOKIE_SECURE=true`. Browser third-party-cookie restrictions can affect cross-origin cookie sessions. |
 | A slot could not be booked | Refresh; another member may have claimed it, or its start time may no longer be in the future. |

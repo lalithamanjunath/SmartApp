@@ -6,6 +6,7 @@ import { Slot } from '../models/Slot.js';
 import { Booking } from '../models/Booking.js';
 import { SlotScheduleLock } from '../models/SlotScheduleLock.js';
 import { Notification } from '../models/Notification.js';
+import { EmailDelivery } from '../models/EmailDelivery.js';
 
 mongoose.set('strictQuery', true);
 let connectionPromise = null;
@@ -34,6 +35,7 @@ export async function connectDatabase(uri = env.mongoUri) {
         Booking.createIndexes(),
         SlotScheduleLock.createIndexes(),
         Notification.createIndexes(),
+        EmailDelivery.createIndexes(),
       ]);
       return mongoose.connection;
     } catch (error) {

@@ -29,6 +29,7 @@ export default function LoginPage() {
         {error && <div className="form-error" role="alert">{error}</div>}
         <label>Email address<input type="email" autoComplete="email" required maxLength={254} placeholder="you@company.com" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
         <label>Password<span className="password-field"><input type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={128} placeholder="Enter your password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></label>
+        <div className="flex justify-end"><Link className="inline-link" to="/forgot-password">Forgot your password?</Link></div>
         <button className="button button-primary button-full" disabled={busy}>{busy ? 'Signing in…' : <>Sign in <ArrowRight size={16} /></>}</button>
       </form>
       <div className="auth-switch">New to Tandem? <Link to="/register">Create an account</Link></div>

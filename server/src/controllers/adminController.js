@@ -28,8 +28,18 @@ async function recentSeries(days) {
   });
 }
 
+async function weeklySeries() {
+  const since = subWeeks(startOfDay(new Date()), 7);
+  const weeklyRaw = await Booking.aggregate([
+    { $match: { createdAt: { $gte: since } } },
+    { $group: { _id: { $dateToString: { format: '%G-W%V', date: '$createdAt' } }, bookings: { $sum: 1 }, cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } } } },
+    { $sort: { _id: 1 } },
+  ]);
+  return weeklyRaw.map((item) => ({ label: item._id, bookings: item.bookings, cancelled: item.cancelled }));
+}
+
 export async function dashboard(_req, res) {
-  const [totalUsers, totalSlots, availableSlots, bookedSlots, totalBookings, cancelledBookings, completedAppointments, recentBookings, daily] = await Promise.all([
+  const [totalUsers, totalSlots, availableSlots, bookedSlots, totalBookings, cancelledBookings, completedAppointments, recentBookings, daily, weekly] = await Promise.all([
     User.countDocuments({ role: 'user' }),
     Slot.countDocuments(),
     Slot.countDocuments({ status: 'available' }),
@@ -38,20 +48,15 @@ export async function dashboard(_req, res) {
     Booking.countDocuments({ status: 'cancelled' }),
     Booking.countDocuments({ status: 'completed' }),
     Booking.find().sort({ createdAt: -1 }).limit(6).populate('userId', 'name email').populate('slotId').lean(),
-    recentSeries(7),
+    recentSeries(30),
+    weeklySeries(),
   ]);
-  res.json({ success: true, data: { stats: { totalUsers, totalSlots, availableSlots, bookedSlots, totalBookings, cancelledBookings, completedAppointments }, recentBookings, daily } });
+  res.json({ success: true, data: { stats: { totalUsers, totalSlots, availableSlots, bookedSlots, totalBookings, cancelledBookings, completedAppointments }, recentBookings, daily: daily.slice(-7), weekly } });
 }
 
 export async function analytics(_req, res) {
-  const daily = await recentSeries(30);
-  const since = subWeeks(startOfDay(new Date()), 7);
-  const weeklyRaw = await Booking.aggregate([
-    { $match: { createdAt: { $gte: since } } },
-    { $group: { _id: { $dateToString: { format: '%G-W%V', date: '$createdAt' } }, bookings: { $sum: 1 }, cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } } } },
-    { $sort: { _id: 1 } },
-  ]);
-  res.json({ success: true, data: { daily, weekly: weeklyRaw.map((item) => ({ label: item._id, bookings: item.bookings, cancelled: item.cancelled })) } });
+  const [daily, weekly] = await Promise.all([recentSeries(30), weeklySeries()]);
+  res.json({ success: true, data: { daily, weekly } });
 }
 
 export async function adminBookings(req, res) {
@@ -111,7 +116,9 @@ export async function userDetails(req, res) {
 
 export async function setUserStatus(req, res) {
   if (String(req.params.id) === String(req.user._id) && !req.body.isActive) throw new ApiError(409, 'You cannot deactivate your own administrator account.');
-  const user = await User.findOneAndUpdate({ _id: req.params.id, role: 'user' }, { $set: { isActive: req.body.isActive } }, { new: true }).select('name email role isActive createdAt');
+  const update = { $set: { isActive: req.body.isActive } };
+  if (!req.body.isActive) update.$inc = { authVersion: 1 };
+  const user = await User.findOneAndUpdate({ _id: req.params.id, role: 'user' }, update, { new: true }).select('name email role isActive createdAt');
   if (!user) throw new ApiError(404, 'User not found.');
   res.json({ success: true, data: { user: safeUser(user) } });
 }

@@ -1,25 +1,8 @@
-import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
-import { env, validateAuthConfig } from '../config/env.js';
+import { validateAuthConfig } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 import { safeUser } from '../utils/serialize.js';
-
-function cookieOptions() {
-  const sameSite = env.cookieSameSite;
-  return {
-    httpOnly: true,
-    secure: sameSite === 'none' ? true : env.cookieSecure,
-    sameSite,
-    path: '/',
-    maxAge: 8 * 60 * 60 * 1000,
-  };
-}
-
-function issueSession(res, user) {
-  validateAuthConfig();
-  const token = jwt.sign({ sub: String(user._id) }, env.jwtSecret, { algorithm: 'HS256', expiresIn: env.jwtExpiresIn });
-  res.cookie(env.cookieName, token, cookieOptions());
-}
+import { clearSession, issueCsrfToken, issueSession } from '../utils/session.js';
 
 export async function register(req, res) {
   validateAuthConfig();
@@ -40,11 +23,14 @@ export async function login(req, res) {
 }
 
 export function logout(_req, res) {
-  const { httpOnly, secure, sameSite, path } = cookieOptions();
-  res.clearCookie(env.cookieName, { httpOnly, secure, sameSite, path });
+  clearSession(res);
   res.json({ success: true, message: 'You have been signed out.' });
 }
 
 export function me(req, res) {
   res.json({ success: true, data: { user: safeUser(req.user) } });
+}
+
+export function csrfToken(req, res) {
+  res.json({ success: true, data: { csrfToken: issueCsrfToken(req, res) } });
 }

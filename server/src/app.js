@@ -11,6 +11,9 @@ import bookingRoutes from './routes/bookingRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import { requireCsrfForCookieRequests } from './middleware/csrf.js';
+import { verifyResendWebhook } from './services/emailWebhookService.js';
+import { asyncHandler } from './utils/ApiError.js';
 
 export const app = express();
 
@@ -44,7 +47,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 }));
 app.options('*', cors({
   origin(origin, callback) {
@@ -54,8 +57,17 @@ app.options('*', cors({
   },
   credentials: true,
 }));
+app.post('/api/webhooks/resend', express.raw({ type: 'application/json', limit: '256kb' }), asyncHandler(async (req, res) => {
+  const result = await verifyResendWebhook(req.body, {
+    id: req.get('svix-id'),
+    timestamp: req.get('svix-timestamp'),
+    signature: req.get('svix-signature'),
+  });
+  res.json({ success: true, data: result });
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+app.use(requireCsrfForCookieRequests);
 
 app.get('/api/health', (_req, res) => {
   res.status(200).json({ success: true, status: 'ok', database: isDatabaseReady() ? 'connected' : 'disconnected' });

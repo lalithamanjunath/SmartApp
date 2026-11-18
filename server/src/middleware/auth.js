@@ -16,8 +16,9 @@ export async function requireAuth(req, _res, next) {
     const token = readToken(req);
     if (!token) throw new ApiError(401, 'Please sign in to continue.');
     const payload = jwt.verify(token, env.jwtSecret, { algorithms: ['HS256'] });
-    const user = await User.findById(payload.sub).select('name email role isActive createdAt');
+    const user = await User.findById(payload.sub).select('name email role isActive createdAt authVersion');
     if (!user || !user.isActive) throw new ApiError(401, 'Your session is no longer valid. Please sign in again.');
+    if ((payload.av ?? 0) !== user.authVersion) throw new ApiError(401, 'Your session is no longer valid. Please sign in again.');
     req.user = user;
     next();
   } catch (error) {

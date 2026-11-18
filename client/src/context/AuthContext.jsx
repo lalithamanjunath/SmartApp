@@ -9,7 +9,8 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let active = true;
-    api.get('/auth/me')
+    api.get('/auth/csrf')
+      .then(() => api.get('/auth/me'))
       .then((response) => { if (active) setUser(dataOf(response)?.user || null); })
       .catch(() => { if (active) setUser(null); })
       .finally(() => { if (active) setLoading(false); });
@@ -20,12 +21,14 @@ export function AuthProvider({ children }) {
     user,
     loading,
     async login(credentials) {
+      await api.get('/auth/csrf');
       const response = await api.post('/auth/login', credentials);
       const nextUser = dataOf(response).user;
       setUser(nextUser);
       return nextUser;
     },
     async register(details) {
+      await api.get('/auth/csrf');
       const response = await api.post('/auth/register', details);
       const nextUser = dataOf(response).user;
       setUser(nextUser);

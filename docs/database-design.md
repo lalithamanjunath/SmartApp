@@ -12,6 +12,9 @@ Tandem uses MongoDB Atlas with Mongoose. Collections are created as the models a
 | `password` | String | Required bcrypt hash; excluded from default Mongoose selection |
 | `role` | String | `user` or `admin`; public registration always writes `user` |
 | `isActive` | Boolean | Defaults to true; inactive users cannot authenticate |
+| `authVersion` | Number | Defaults to 0; included in session validation and incremented on password changes/resets and deactivation |
+| `passwordResetTokenHash` | String or null | SHA-256 hash of a single-use reset token; excluded from default selection |
+| `passwordResetExpiresAt` | Date or null | Reset-token expiration timestamp; excluded from default selection |
 | `createdAt`, `updatedAt` | Date | Mongoose timestamps |
 
 A pre-save hook hashes a modified password using bcrypt. Responses use an explicit safe-user projection and never contain the hash. The unique email index prevents duplicate accounts. The initial administrator is created through `pnpm admin:create`; no public admin-registration field exists.
@@ -50,6 +53,8 @@ The infrastructure-only `SlotScheduleLock` collection stores one `{ date, revisi
 | `bookedAt` | Date | Defaults to creation time |
 | `cancelledAt` | Date or null | Set when eligible cancellation succeeds |
 | `idempotencyKey` | String (optional) | Client retry key; unique within one user when present |
+| `rescheduleHistory` | Array of snapshots | Previous slot ID, date/time and reschedule time; retains booking history after the old slot is released |
+| `rescheduleRequestHashes` | Array of hashes | SHA-256 request hashes used to make retries of a reschedule idempotent; excluded from API responses |
 | `createdAt`, `updatedAt` | Date | Mongoose timestamps |
 
 Indexes:
@@ -58,7 +63,10 @@ Indexes:
 - Partial unique `{ slotId: 1 }` where `status: 'confirmed'` ensures only one active booking per slot while preserving canceled/completed/no-show history.
 - Partial unique `{ userId: 1, idempotencyKey: 1 }` where the key is a string, for retry safety.
 - `{ userId: 1, status: 1, bookedAt: -1 }` supports member history.
+- `{ userId: 1, bookedAt: -1 }` supports the member's unfiltered chronological booking history.
 - `{ status: 1, bookedAt: -1 }` supports admin status/history queries.
+- `{ createdAt: -1 }` supports the administrator's newest-bookings list.
+- `{ rescheduleHistory.slotId: 1 }` supports historical-slot protection checks.
 
 ## Relationships and lifecycle
 
@@ -71,6 +79,14 @@ Indexes:
 ## Notifications
 
 Notifications belong to one user and optionally reference a booking. Each record stores an event key, type, title, message, read state/time, appointment date/time and booking reference. Unique event keys prevent duplicate confirmations and reminders; indexes on `{userId, createdAt}` and `{userId, isRead, createdAt}` support inbox and unread-count reads. Confirmations and cancellations commit with the booking transaction. Reminder generation is derived from confirmed bookings and booked slots in MongoDB, so worker restarts do not discard scheduled work; the unique event key makes periodic scans safe to repeat.
+
+## Email delivery outbox
+
+`EmailDelivery` stores a unique event key, user reference, delivery type/status, attempts, provider message/event IDs, retry timing and delivery timestamps. The payload is AES-256-GCM encrypted and excluded from default reads because password reset links contain bearer tokens. The collection is created/indexed at startup. The worker claims queued or expired-lease jobs atomically, records the first provider attempt and stops retrying before Resend's idempotency window expires. Provider webhooks update delivery status only after verifying the Svix signature against the raw body.
+
+## Additive schema changes
+
+This feature set adds user auth/reset fields, booking reschedule history/request-hash fields, the email-delivery collection, and non-unique booking query indexes. Existing documents remain valid through field defaults; no existing booking is rewritten and no existing index is dropped. Production startup explicitly creates the declared indexes (`createIndexes`) even when Mongoose auto-indexing is disabled.
 
 ## Transaction and deployment note
 

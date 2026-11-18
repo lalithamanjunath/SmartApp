@@ -18,6 +18,11 @@ export const registerSchema = z.object({
 }).strict();
 
 export const loginSchema = z.object({ email, password: z.string().min(1).max(128) }).strict();
+export const forgotPasswordSchema = z.object({ email }).strict();
+export const resetPasswordSchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'Invalid password reset token.'),
+  password: strongPassword,
+}).strict();
 export const profileSchema = z.object({ name: z.string().trim().min(2).max(100), email }).strict();
 export const passwordSchema = z.object({ currentPassword: z.string().min(1).max(128), newPassword: strongPassword }).strict();
 
@@ -31,6 +36,10 @@ export const slotSchema = z.object({
 export const bookingSchema = z.object({
   slotId: objectId,
   idempotencyKey: z.string().trim().min(8).max(120).optional(),
+}).strict();
+export const rescheduleSchema = z.object({
+  slotId: objectId,
+  idempotencyKey: z.string().trim().min(8).max(120),
 }).strict();
 
 export const bookingStatusSchema = z.object({ status: z.enum(['completed', 'no-show']) }).strict();
@@ -48,6 +57,11 @@ export const bookingQuerySchema = z.object({
   status: z.enum(['confirmed', 'cancelled', 'completed', 'no-show']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export const memberBookingQuerySchema = z.object({
+  status: z.enum(['confirmed', 'cancelled', 'completed']).optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 export const userQuerySchema = z.object({ q: z.string().trim().max(80).optional(), page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(25) });
 export const notificationQuerySchema = z.object({

@@ -12,7 +12,7 @@ function makeReference(date) {
   return `TDM-${day}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 }
 
-export async function createBooking({ userId, slotId, idempotencyKey }) {
+export async function createBooking({ userId, userEmail, slotId, idempotencyKey }) {
   const session = await mongoose.startSession();
   let bookingId;
   try {
@@ -42,6 +42,7 @@ export async function createBooking({ userId, slotId, idempotencyKey }) {
       bookingId = created._id;
       await createAppointmentNotification({
         userId,
+        userEmail,
         booking: created,
         slot: claimed,
         type: 'booking-confirmed',
@@ -57,10 +58,17 @@ export async function createBooking({ userId, slotId, idempotencyKey }) {
   return Booking.findById(bookingId).populate('slotId').populate('userId', 'name email');
 }
 
-export async function listUserBookings(userId, status) {
+export async function listUserBookings(userId, { status, page, limit } = {}) {
   const query = { userId };
-  if (status) query.status = status;
-  return Booking.find(query).sort({ bookedAt: -1 }).populate('slotId').lean();
+  if (status === 'completed') query.status = { $in: ['completed', 'no-show'] };
+  else if (status) query.status = status;
+  const records = Booking.find(query).sort({ bookedAt: -1 }).populate('slotId');
+  if (page === undefined || limit === undefined) return { bookings: await records.lean() };
+  const [bookings, total] = await Promise.all([
+    records.skip((page - 1) * limit).limit(limit).lean(),
+    Booking.countDocuments(query),
+  ]);
+  return { bookings, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
 export async function getUserBooking(userId, id) {
@@ -70,7 +78,7 @@ export async function getUserBooking(userId, id) {
   return booking;
 }
 
-export async function cancelBooking(userId, id) {
+export async function cancelBooking(userId, userEmail, id) {
   const session = await mongoose.startSession();
   let updatedId;
   try {
@@ -95,6 +103,7 @@ export async function cancelBooking(userId, id) {
       if (!released) throw new ApiError(409, 'The slot could not be released. No cancellation was saved.');
       await createAppointmentNotification({
         userId,
+        userEmail,
         booking: changed,
         slot,
         type: 'booking-cancelled',
@@ -102,6 +111,86 @@ export async function cancelBooking(userId, id) {
       });
       updatedId = changed._id;
     }, { readPreference: 'primary', readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
+  } finally {
+    await session.endSession();
+  }
+  return Booking.findById(updatedId).populate('slotId').lean();
+}
+
+export async function rescheduleBooking({ userId, userEmail, id, slotId, idempotencyKey }) {
+  if (!mongoose.isValidObjectId(id)) throw new ApiError(404, 'Appointment not found.');
+  const requestHash = crypto.createHash('sha256').update(idempotencyKey).digest('hex');
+  const session = await mongoose.startSession();
+  let updatedId;
+  try {
+    await session.withTransaction(async () => {
+      const booking = await Booking.findOne({ _id: id, userId }).select('+rescheduleRequestHashes').session(session);
+      if (!booking) throw new ApiError(404, 'Appointment not found.');
+      if (booking.rescheduleRequestHashes.includes(requestHash)) {
+        updatedId = booking._id;
+        return;
+      }
+      if (booking.status !== 'confirmed') throw new ApiError(409, 'Only confirmed appointments can be rescheduled.');
+      if (String(booking.slotId) === slotId) {
+        updatedId = booking._id;
+        return;
+      }
+      const currentSlot = await Slot.findById(booking.slotId).session(session);
+      if (!currentSlot) throw new ApiError(409, 'The current appointment slot could not be found.');
+      const cutoff = env.cancellationCutoffHours * 60 * 60 * 1000;
+      if (slotStart(currentSlot.date, currentSlot.startTime).getTime() - Date.now() < cutoff) {
+        throw new ApiError(409, `Appointments can be rescheduled at least ${env.cancellationCutoffHours} hours in advance.`);
+      }
+      const target = await Slot.findOne({ _id: slotId, status: 'available' }).session(session);
+      if (!target) throw new ApiError(409, 'That appointment slot is no longer available. Please choose another time.');
+      if (slotStart(target.date, target.startTime) <= new Date()) {
+        throw new ApiError(400, 'Appointment slots must start in the future.');
+      }
+      const claimed = await Slot.findOneAndUpdate(
+        { _id: target._id, status: 'available' },
+        { $set: { status: 'booked' } },
+        { new: true, session },
+      );
+      if (!claimed) throw new ApiError(409, 'That appointment slot was just booked. Please choose another time.');
+      const rescheduledAt = new Date();
+      const changed = await Booking.findOneAndUpdate(
+        { _id: booking._id, userId, status: 'confirmed', slotId: currentSlot._id },
+        {
+          $set: { slotId: claimed._id },
+          $push: {
+            rescheduleHistory: {
+              slotId: currentSlot._id,
+              date: currentSlot.date,
+              startTime: currentSlot.startTime,
+              endTime: currentSlot.endTime,
+              rescheduledAt,
+            },
+          },
+          $addToSet: { rescheduleRequestHashes: requestHash },
+        },
+        { new: true, session, runValidators: true },
+      );
+      if (!changed) throw new ApiError(409, 'This appointment changed while you were rescheduling it. Refresh and try again.');
+      const released = await Slot.findOneAndUpdate(
+        { _id: currentSlot._id, status: 'booked' },
+        { $set: { status: 'available' } },
+        { new: true, session },
+      );
+      if (!released) throw new ApiError(409, 'The original slot could not be released. No reschedule was saved.');
+      await createAppointmentNotification({
+        userId,
+        userEmail,
+        booking: changed,
+        slot: claimed,
+        type: 'booking-rescheduled',
+        eventKey: `booking:${booking._id}:reschedule:${requestHash}`,
+        session,
+      });
+      updatedId = changed._id;
+    }, { readPreference: 'primary', readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
+  } catch (error) {
+    if (error.code === 11000) throw new ApiError(409, 'That appointment slot was just booked. Refresh availability and try again.');
+    throw error;
   } finally {
     await session.endSession();
   }

@@ -1,6 +1,6 @@
 # Tandem — Smart Appointment Platform
 
-Tandem is a full-stack appointment scheduling platform with separate member and administrator workspaces. Members browse server-confirmed availability, book appointments with unique references, manage their profile, and review or cancel eligible appointments. Administrators manage slots, bookings, users, cancellation history and activity analytics.
+Tandem is a full-stack appointment scheduling platform with separate member and administrator workspaces. Members browse server-confirmed availability, book appointments with unique references, manage their profile, review/cancel eligible appointments and reschedule while preserving booking history. Administrators manage slots, bookings, users, cancellation history and activity analytics. Account recovery and appointment email are supported through an encrypted MongoDB outbox and Resend.
 
 ## Technology
 
@@ -25,9 +25,9 @@ server/                    Express/Mongoose REST service
   src/config/              Environment and Atlas connection/index initialization
   src/controllers/         Request/response handlers
   src/middleware/          Auth, role, database and validation/error middleware
-  src/models/              User, Slot, Booking and UTC-day lock schemas/indexes
+  src/models/              User, Slot, Booking, notification, email and UTC-day lock schemas/indexes
   src/routes/              Versioned auth, slots, bookings, user and admin routes
-  src/services/            Slot schedule-lock, slot and booking rules
+  src/services/            Slot, booking, notification, reminder and email-delivery rules
   src/utils/               Errors, safe serialization and UTC date helpers
   test/platform.test.js    In-memory replica-set integration tests
 docs/                       Architecture, data model, API reference and verification report
@@ -91,7 +91,7 @@ pnpm test
 pnpm build
 ```
 
-The API integration suite starts an isolated one-node in-memory MongoDB replica set and shuts it down after use. It does not connect to or write to the configured Atlas database. It exercises member-only registration, password hashing/login/logout, authentication and admin-role isolation, Helmet headers, slot create/update/unavailable/delete and overlap rules, parallel overlapping and non-overlapping admin slot writes, immutable canceled-booking history, day-lock and booking indexes, past same-day availability filtering, concurrent booking attempts, booking idempotency/ownership, admin booking/user filters and details, profile/password changes, account activation/deactivation, completion/no-show transitions, the cancellation cutoff and slot release. A successful suite is not a substitute for valid Atlas credentials and checking the target environment. See [`docs/testing-report.md`](docs/testing-report.md) for the current verification results and limitations.
+The API integration suite starts an isolated one-node in-memory MongoDB replica set and shuts it down after use. It does not connect to or write to the configured Atlas database. It exercises authentication/session invalidation, reset-token expiration/reuse, CSRF, email retries/webhook delivery and worker lease recovery, notification independence, reschedule ownership/history/cutoff/concurrency, booking concurrency/idempotency, admin authorization, pagination, and indexes/query plans. A successful suite is not a substitute for valid Atlas credentials or live provider delivery. See [`docs/testing-report.md`](docs/testing-report.md) for current verification results and limitations.
 
 ## Vercel frontend
 
@@ -112,7 +112,19 @@ Set this value in Vercel's build environment before each build. `VITE_` variable
 - **Health path:** `/api/health`
 - **Environment:** `NODE_ENV=production`, `MONGODB_URI`, a strong private `JWT_SECRET`, `CLIENT_ORIGIN` (the exact Vercel HTTPS origin, or a comma-separated allowlist), `COOKIE_SAME_SITE=none`, `COOKIE_SECURE=true`, and optionally `JWT_EXPIRES_IN=8h` and `CANCELLATION_CUTOFF_HOURS=24`.
 
-Render supplies `PORT`. Do not add wildcard credentialed CORS origins. After the Vercel origin is known, set it in Render's `CLIENT_ORIGIN`; the browser API base and the backend CORS allowlist must agree. Both services must be HTTPS for Secure cookies.
+Render supplies `PORT`. Do not add wildcard credentialed CORS origins. After the Vercel origin is known, set it in Render's `CLIENT_ORIGIN`; set `CLIENT_APP_URL` to the frontend origin used in password reset links. The browser API base and backend CORS allowlist must agree. Both services must be HTTPS for Secure cookies.
+
+### Resend email
+
+Configure these values only in the backend environment (or local ignored `.env`) to enable delivery:
+
+- `RESEND_API_KEY`: private Resend API key.
+- `RESEND_FROM_EMAIL`: verified sender address.
+- `RESEND_WEBHOOK_SECRET`: Svix signing secret for the Resend webhook.
+- `EMAIL_ENCRYPTION_KEY`: base64-encoded 32-byte random key. Generate locally with `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
+- `CLIENT_APP_URL`: public frontend origin used to construct password-reset links.
+
+In Resend, configure the webhook URL as `https://<your-render-service>.onrender.com/api/webhooks/resend` and subscribe to sent, delivered, delayed, failed, bounced, complained and suppressed events. Never add these private values to Vercel or a `VITE_` variable. Without complete email configuration, database notifications continue working and email delivery remains disabled.
 
 For managed Preview, the project uses protected `MONGODB_URI` and `JWT_SECRET` values. Keep separate development and production secrets/data stores where possible; the platform's protected secret input stores credentials without putting them in the repository or chat.
 

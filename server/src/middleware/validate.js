@@ -20,6 +20,6 @@ export function errorHandler(error, _req, res, _next) {
   }
   const status = Number(error.status) || 500;
   const message = status >= 500 && status !== 503 ? 'Something went wrong. Please try again.' : error.message;
-  if (status >= 500) console.error('[api-error]', error.message);
+  if (status >= 500) console.error('[api-error]', error.name || 'Error', error.code || '');
   return res.status(status).json({ success: false, message, ...(error.details ? { errors: error.details } : {}) });
 }

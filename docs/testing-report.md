@@ -39,4 +39,19 @@ After adding in-app notifications, database-derived appointment reminders, passw
 | Patch whitespace | Pass | `git diff --check` reported no whitespace errors. |
 | Database teardown | Pass | The final test run completed without teardown errors. An earlier intermediate run printed a MongoDB Memory Server `ECONNRESET`; baseline and final test exit statuses were both 0. |
 
-No Atlas-backed or production request-latency benchmark was run. Notification date/time messages use UTC; the current slot model has no provider/service identity fields, and the existing app has no rescheduling workflow or email-delivery configuration.
+No Atlas-backed or production request-latency benchmark was run. Notification date/time messages use UTC; the current slot model has no provider/service identity fields, so rescheduling is member-to-slot only.
+
+## Production-readiness implementation — 2026-11-18
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| API integration suite | Pass | `pnpm test`: 15 tests passed, 0 failed. Coverage now includes reset expiry/reuse and auth-version invalidation, signed CSRF checks, encrypted email retry/idempotency and webhook signatures, expired-lease recovery, duplicate reminder email prevention, notification persistence with email disabled, rescheduling history/ownership/cutoff/concurrency, paginated member history and query/index assertions. The final test process exited 0 without teardown errors. |
+| Backend syntax | Pass | `node --check` passed for all JavaScript files under `server/src`, `server/scripts` and `server/test`. |
+| Production frontend build | Pass | `pnpm build` completed. Entry bundle: 447.84 kB (137.15 kB gzip). `AdminDashboardPage`: 10.17 kB (2.22 kB gzip); deferred chart module: 431.94 kB (117.42 kB gzip). |
+| Admin dashboard split | Measured bundle change | The dashboard page module fell from the previously measured 440.25 kB to 10.17 kB (97.7% smaller); chart code now loads separately near the viewport. The entry bundle is 1.25 kB larger than the prior 446.59 kB baseline, and total chart bytes were not removed. This is deferred route/component loading, not a claim of overall bundle-size or latency improvement. |
+| Admin dashboard API/query work | Verified in code/tests | The dashboard now obtains its daily and weekly series in one request instead of separately calling dashboard and analytics. Its data work uses two booking aggregation pipelines (daily and weekly), rather than the previous three across the two requests. The existing analytics endpoint remains available. |
+| Booking-history query plan | Pass in test environment | Explain-plan integration assertion confirms an index scan for `{userId}` sorted by `bookedAt`, with documents examined equal to matching bookings in the isolated replica set. This is not a production Atlas benchmark. |
+| Patch whitespace | Pass | `git diff --check` reported no whitespace errors. |
+| Live provider / Atlas checks | Not performed | Tests mock Resend and verify signed webhook delivery events. No provider credentials or connected production Atlas database were used; actual mail delivery, Atlas query statistics and production API latency remain to be verified after deployment. |
+
+Schema additions are backward-compatible defaults and new indexes/collections; the startup process creates indexes but does not drop existing indexes or rewrite existing booking records. See [`database-design.md`](./database-design.md) for the exact additions and operational notes.

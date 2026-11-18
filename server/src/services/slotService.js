@@ -78,8 +78,11 @@ export async function listSlots(filters = {}) {
   const slots = await Slot.find(query).sort({ date: 1, startTime: 1 }).populate('createdBy', 'name email').lean();
   if (!slots.length) return [];
   const slotIds = slots.map((slot) => slot._id);
-  const referencedIds = await Booking.distinct('slotId', { slotId: { $in: slotIds } });
-  const hasHistory = new Set(referencedIds.map(String));
+  const [currentBookingSlotIds, rescheduledSlotIds] = await Promise.all([
+    Booking.distinct('slotId', { slotId: { $in: slotIds } }),
+    Booking.distinct('rescheduleHistory.slotId', { 'rescheduleHistory.slotId': { $in: slotIds } }),
+  ]);
+  const hasHistory = new Set([...currentBookingSlotIds, ...rescheduledSlotIds].map(String));
   return slots.map((slot) => ({ ...slot, hasBookingHistory: hasHistory.has(String(slot._id)) }));
 }
 
@@ -121,7 +124,9 @@ export async function updateSlot(id, input) {
     await lockScheduleDates([slot.date, next.date], session);
 
     const activeBooking = await Booking.exists({ slotId: slot._id, status: 'confirmed' }).session(session);
-    const hasBookingHistory = await Booking.exists({ slotId: slot._id }).session(session);
+    const hasBookingHistory = await Booking.exists({
+      $or: [{ slotId: slot._id }, { 'rescheduleHistory.slotId': slot._id }],
+    }).session(session);
     if (activeBooking && (timeChanged || next.status !== 'booked')) {
       throw new ApiError(409, 'This slot has an active booking and cannot be changed.');
     }
@@ -148,7 +153,9 @@ export async function deleteSlot(id) {
     if (!slot) throw new ApiError(404, 'Appointment slot not found.');
     await lockScheduleDates([slot.date], session);
 
-    const hasBookingHistory = await Booking.exists({ slotId: slot._id }).session(session);
+    const hasBookingHistory = await Booking.exists({
+      $or: [{ slotId: slot._id }, { 'rescheduleHistory.slotId': slot._id }],
+    }).session(session);
     if (hasBookingHistory) {
       throw new ApiError(409, 'A slot with booking history cannot be deleted; its appointment record must be preserved.');
     }

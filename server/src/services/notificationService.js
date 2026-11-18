@@ -1,4 +1,5 @@
 import { Notification } from '../models/Notification.js';
+import { enqueueAppointmentEmail } from './emailService.js';
 
 const notificationCopy = {
   'booking-confirmed': { title: 'Appointment confirmed', prefix: 'Your appointment is confirmed' },
@@ -8,12 +9,12 @@ const notificationCopy = {
   'booking-rescheduled': { title: 'Appointment rescheduled', prefix: 'Your appointment has been rescheduled' },
 };
 
-function notificationRecord({ userId, booking, slot, type }) {
+function notificationRecord({ userId, booking, slot, type, eventKey }) {
   const copy = notificationCopy[type];
   return {
     userId,
     appointmentId: booking._id,
-    eventKey: `booking:${booking._id}:${type}`,
+    eventKey: eventKey || `booking:${booking._id}:${type}`,
     type,
     title: copy.title,
     message: `${copy.prefix} for ${slot.date} at ${slot.startTime}–${slot.endTime} UTC. Booking reference: ${booking.bookingReference}.`,
@@ -26,11 +27,20 @@ function notificationRecord({ userId, booking, slot, type }) {
   };
 }
 
-export async function createAppointmentNotification({ userId, booking, slot, type, session }) {
+export async function createAppointmentNotification({ userId, userEmail, booking, slot, type, session, eventKey }) {
+  const record = notificationRecord({ userId, booking, slot, type, eventKey });
   const [notification] = await Notification.create(
-    [notificationRecord({ userId, booking, slot, type })],
+    [record],
     session ? { session } : undefined,
   );
+  await enqueueAppointmentEmail({
+    to: userEmail,
+    type,
+    booking,
+    slot,
+    eventKey: `${record.eventKey}:email`,
+    session,
+  });
   return notification;
 }
 
@@ -47,6 +57,16 @@ export async function createReminderIfMissing({ booking, slot, type }) {
     if (error.code === 11000) return false;
     throw error;
   }
+}
+
+export async function enqueueReminderEmail({ userEmail, booking, slot, type }) {
+  return enqueueAppointmentEmail({
+    to: userEmail,
+    type,
+    booking,
+    slot,
+    eventKey: `booking:${booking._id}:${type}:email`,
+  });
 }
 
 export async function listNotifications(userId, { page, limit }) {

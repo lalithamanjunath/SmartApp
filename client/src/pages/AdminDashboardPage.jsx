@@ -1,25 +1,26 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Activity, CalendarCheck2, CalendarDays, CheckCircle2, CircleX, Clock3, Users, RefreshCw, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { PageHeader, MetricCard } from '../components/PageHeader.jsx';
 import { StatusBadge, ErrorNotice } from '../components/States.jsx';
 import { api, apiMessage, dataOf } from '../services/api.js';
 
+const AdminDashboardCharts = lazy(() => import('../components/AdminDashboardCharts.jsx'));
+
 export default function AdminDashboardPage() {
   const [dashboard, setDashboard] = useState(null);
-  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [chartsVisible, setChartsVisible] = useState(false);
+  const chartsRef = useRef(null);
 
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const [summary, trends] = await Promise.all([api.get('/admin/dashboard'), api.get('/admin/analytics')]);
+      const summary = await api.get('/admin/dashboard');
       setDashboard(dataOf(summary));
-      setAnalytics(dataOf(trends));
     } catch (requestError) {
       setError(apiMessage(requestError, 'Admin dashboard data could not be loaded.'));
     } finally {
@@ -29,8 +30,24 @@ export default function AdminDashboardPage() {
 
   useEffect(() => { load(); }, []);
   const stats = dashboard?.stats || {};
-  const daily = analytics?.daily?.slice(-7) || [];
-  const weekly = analytics?.weekly || [];
+  const daily = dashboard?.daily || [];
+  const weekly = dashboard?.weekly || [];
+
+  useEffect(() => {
+    if (!chartsRef.current) return undefined;
+    if (!('IntersectionObserver' in window)) {
+      setChartsVisible(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setChartsVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    observer.observe(chartsRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   return <>
     <PageHeader
@@ -47,16 +64,11 @@ export default function AdminDashboardPage() {
       <MetricCard label="Total bookings" value={loading ? '—' : stats.totalBookings} note={`${stats.cancelledBookings ?? '—'} cancelled`} icon={CalendarCheck2} tone="amber" />
     </div>
 
-    <div className="dashboard-columns admin-chart-columns">
-      <section className="surface-panel chart-panel">
-        <div className="section-heading"><div><div className="eyebrow">BOOKING ACTIVITY</div><h2>Daily appointments</h2></div><span className="chart-period">Last 7 days</span></div>
-        <div className="chart-wrap">{daily.length ? <ResponsiveContainer width="100%" height={260}><LineChart data={daily} margin={{ top: 8, right: 10, left: -20, bottom: 0 }}><CartesianGrid stroke="#edf0f5" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#8790a2', fontSize: 12 }} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#8790a2', fontSize: 11 }} /><Tooltip /><Line type="monotone" dataKey="bookings" name="Bookings" stroke="#4f46e5" strokeWidth={2.5} dot={{ r: 3, fill: '#4f46e5' }} activeDot={{ r: 5 }} /><Line type="monotone" dataKey="cancelled" name="Cancelled" stroke="#b9d845" strokeWidth={2.5} dot={{ r: 3, fill: '#b9d845' }} /></LineChart></ResponsiveContainer> : <div className="chart-empty">Daily activity will appear once appointments are booked.</div>}</div>
-        <div className="chart-legend"><span><i className="chart-indigo" />Bookings</span><span><i className="chart-lime" />Cancelled</span></div>
-      </section>
-      <aside className="surface-panel capacity-panel"><div className="eyebrow">SLOT AVAILABILITY</div><h2>Keep the right<br />times open.</h2><p>Make it easy to find a time that fits and give your team a clear view of the week.</p><div className="capacity-counts"><div><span>Available</span><strong>{loading ? '—' : stats.availableSlots ?? 0}</strong></div><div><span>Booked</span><strong>{loading ? '—' : stats.bookedSlots ?? 0}</strong></div></div><Link to="/admin/slots" className="inline-link">Manage appointment slots <ArrowRight size={15} /></Link><span className="capacity-deco">✳</span></aside>
+    <div ref={chartsRef} className="min-h-[700px]">
+      <Suspense fallback={<div className="chart-empty">Loading dashboard charts…</div>}>
+        {chartsVisible && <AdminDashboardCharts daily={daily} weekly={weekly} stats={stats} loading={loading} />}
+      </Suspense>
     </div>
-
-    <section className="surface-panel chart-panel weekly-chart-panel"><div className="section-heading"><div><div className="eyebrow">WEEKLY OVERVIEW</div><h2>Appointments by week</h2></div><span className="chart-period">Last 8 weeks</span></div><div className="chart-wrap">{weekly.length ? <ResponsiveContainer width="100%" height={235}><BarChart data={weekly} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}><CartesianGrid stroke="#edf0f5" strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#8790a2', fontSize: 10 }} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#8790a2', fontSize: 11 }} /><Tooltip /><Bar dataKey="bookings" name="Bookings" fill="#4f46e5" radius={[5, 5, 0, 0]} /><Bar dataKey="cancelled" name="Cancelled" fill="#d5f36a" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer> : <div className="chart-empty">Weekly activity will appear once appointments are booked.</div>}</div></section>
 
     <section className="surface-panel recent-panel"><div className="section-heading"><div><div className="eyebrow">LATEST ACTIVITY</div><h2>Recently booked</h2></div><Link className="inline-link" to="/admin/bookings">All bookings <ArrowRight size={15} /></Link></div>
       {loading ? <div className="loading-line" /> : dashboard?.recentBookings?.length ? <div className="admin-recent-list">{dashboard.recentBookings.map((booking) => <Link className="admin-recent-row" key={booking._id} to={`/admin/bookings/${booking._id}`}><div className="avatar avatar-small">{booking.userId?.name?.slice(0, 1)?.toUpperCase() || 'U'}</div><div className="admin-recent-person"><strong>{booking.userId?.name || 'Account'}</strong><small>{booking.userId?.email || 'Email unavailable'}</small></div><div className="admin-recent-time"><strong>{booking.slotId?.date || 'Date pending'}</strong><small>{booking.slotId?.startTime || '—'} · {booking.bookingReference}</small></div><StatusBadge status={booking.status} /><ArrowRight size={15} className="recent-arrow" /></Link>)}</div> : <div className="chart-empty">No bookings to show yet. New activity will appear here.</div>}

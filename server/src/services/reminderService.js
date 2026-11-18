@@ -1,6 +1,8 @@
 import { Booking } from '../models/Booking.js';
 import { Slot } from '../models/Slot.js';
-import { createReminderIfMissing } from './notificationService.js';
+import { createReminderIfMissing, enqueueReminderEmail } from './notificationService.js';
+import { User } from '../models/User.js';
+import { isEmailDeliveryConfigured } from './emailService.js';
 import { formatDateKey, slotStart } from '../utils/time.js';
 
 const reminderWindows = [
@@ -21,6 +23,11 @@ export async function generateDueReminders(now = new Date()) {
     status: 'confirmed',
     slotId: { $in: slots.map((slot) => slot._id) },
   }).select('_id userId slotId bookingReference').lean();
+  const userEmails = new Map();
+  if (isEmailDeliveryConfigured()) {
+    const users = await User.find({ _id: { $in: bookings.map((booking) => booking.userId) } }).select('email').lean();
+    for (const user of users) userEmails.set(String(user._id), user.email);
+  }
 
   let created = 0;
   for (const booking of bookings) {
@@ -30,6 +37,8 @@ export async function generateDueReminders(now = new Date()) {
     for (const reminder of reminderWindows) {
       if (startsAt <= now.getTime() + reminder.hours * 60 * 60 * 1000) {
         if (await createReminderIfMissing({ booking, slot, type: reminder.type })) created += 1;
+        const userEmail = userEmails.get(String(booking.userId));
+        if (userEmail) await enqueueReminderEmail({ userEmail, booking, slot, type: reminder.type });
       }
     }
   }
@@ -44,7 +53,7 @@ export function startReminderScheduler({ intervalMs = 60_000, logger = console }
     try {
       await generateDueReminders();
     } catch (error) {
-      logger.error('[reminder-worker] Failed to generate appointment reminders:', error.message);
+      logger.error('[reminder-worker] Failed to generate appointment reminders:', error.name || 'Error');
     } finally {
       running = false;
     }

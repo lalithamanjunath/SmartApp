@@ -11,8 +11,11 @@ Browser
   └── HTTP-only tandem_session cookie
                          │
                  Express API + Mongoose
-                         │
-                    MongoDB Atlas
+                    ┌────┴────┐
+                    │         └── MongoDB email outbox worker → Resend
+                    └── MongoDB Atlas
+                                ↑
+                      signed Resend webhook
 ```
 
 During local development Vite serves port 3000 and proxies `/api/*` to Express on port 4000. Preview uses the project-configured Vite runtime port. Production uses `VITE_API_BASE_URL`, credentialed CORS and an explicit `CLIENT_ORIGIN` allowlist.
@@ -23,12 +26,12 @@ During local development Vite serves port 3000 and proxies `/api/*` to Express o
 - `src/services/api.js` centralizes the API base URL, credentialed cookies, timeout and safe user-facing error extraction.
 - `src/routes/ProtectedRoute.jsx` handles pending authentication, sign-in redirects and role-aware workspace redirection.
 - `src/layouts/` separates the public website from the member and admin shells. The admin navigation is distinct and is not an authorization boundary by itself.
-- `src/pages/` binds booking, profile, user history, slot administration, analytics and account management to the corresponding backend APIs. All business-critical availability and permission decisions are repeated on the server.
+- `src/pages/` binds booking, profile, user history, slot administration, analytics and account recovery to the corresponding backend APIs. The administrator chart module is separately lazy-loaded and deferred until near the viewport. All business-critical availability and permission decisions are repeated on the server.
 - Shared components provide status, loading/error/empty states, page headings, metric cards, booking cards and dialogs.
 
 ## Server modules
 
-`server/src/app.js` assembles Helmet, credentialed CORS, JSON parsing, health/API routes, 404 handling and safe centralized errors. `server/src/server.js` starts Express and attempts the configured Atlas connection. Routes delegate to controllers; Zod validates public request shapes; auth middleware verifies HS256 tokens and reloads active users; role middleware enforces admin-only APIs; services own slot and booking invariants. Authenticated members can read and manage their own in-app notifications. A MongoDB-derived worker periodically creates due reminders with unique event keys, so a process restart does not lose reminder work.
+`server/src/app.js` assembles Helmet, credentialed CORS, the raw-body Resend webhook before JSON parsing, health/API routes, 404 handling and safe centralized errors. `server/src/server.js` starts Express and, after Atlas connects, starts the reminder scheduler and configured email worker. Routes delegate to controllers; Zod validates public request shapes; auth middleware verifies HS256 tokens and reloads active users; role middleware enforces admin-only APIs; services own slot and booking invariants. Authenticated members can read and manage their own in-app notifications. MongoDB-backed workers make reminder generation and pending email delivery recoverable after process restarts.
 
 In production, the API logs request method, route template, response status and duration without query strings or credentials. Responses over one second are marked as slow and 5xx responses as errors. Database-query-level timings and production latency baselines are not currently available.
 
@@ -36,7 +39,9 @@ In production, the API logs request method, route template, response status and 
 
 ## Authentication and access
 
-Registration accepts only name, email and password, rejects unknown fields such as `role`, and always inserts a `user` role. Admin accounts are created only by the protected interactive CLI. Login signs an eight-hour-by-default HS256 JWT in the `tandem_session` HTTP-only cookie. Cookies use explicit `SameSite`/`Secure` environment settings; public HTTPS Preview must use `SameSite=None; Secure`, while local plain HTTP can use Lax/false. Third-party-cookie blocking in a browser remains an external constraint.
+Registration accepts only name, email and password, rejects unknown fields such as `role`, and always inserts a `user` role. Admin accounts are created only by the protected interactive CLI. Login signs an eight-hour-by-default HS256 JWT in the `tandem_session` HTTP-only cookie. Its `av` claim is checked against the user's `authVersion`; password changes, password resets and account deactivation invalidate prior sessions. Cookies use explicit `SameSite`/`Secure` environment settings; public HTTPS Preview must use `SameSite=None; Secure`, while local plain HTTP can use Lax/false. State-changing cookie-authenticated requests with an Origin require the matching signed double-submit CSRF cookie/header. Third-party-cookie blocking in a browser remains an external constraint.
+
+Password reset uses 256-bit random tokens, stores only a SHA-256 token hash and expires after 30 minutes. The token is placed in the URL fragment so normal HTTP requests and referrers do not transmit it. One transaction consumes the token, changes the bcrypt password and increments `authVersion`.
 
 Every protected request verifies the token, loads the current user and rejects inactive accounts. Admin routes then enforce `role=admin`. The serializer exposes only `id`, `name`, `email`, `role`, `isActive` and `createdAt`; password hashes and tokens are never returned in JSON.
 
@@ -48,6 +53,11 @@ Every protected request verifies the token, loads the current user and rejects i
 4. A partial unique index permits at most one `confirmed` booking per slot. A separate unique `(userId, idempotencyKey)` index protects retryable requests. Exact duplicate slots are rejected by a unique `(date,startTime)` index. Admin slot creates and schedule edits lock the UTC-day document inside a transaction before checking for interval overlap.
 5. Eligible cancellation changes the booking to `cancelled`, records `cancelledAt`, and releases the slot in the same transaction. Transactions are required for the strongest consistency guarantees and are supported by Atlas replica sets.
 6. Admin completion/no-show changes are allowed only after the scheduled end time. Cancellation history is retained; booking records are not erased by cancellation. A slot referenced by a booking keeps its original date/time and cannot be deleted; an administrator may still change its availability when there is no active booking.
+7. Member rescheduling checks ownership, confirmed status, the existing cancellation cutoff and target availability. It claims the target slot, updates the booking with an immutable snapshot of the old slot, then releases the old slot in one transaction. A request hash makes retries idempotent.
+
+## Email outbox
+
+When Resend, webhook, encryption-key and client-URL configuration is present, application events enqueue encrypted email payloads in the same booking/reset transaction where applicable. A persistent worker leases jobs, retries transient provider failures with bounded backoff, and uses Resend's idempotency key. Retrying stops before the provider's idempotency window expires, avoiding a delayed duplicate after a prolonged outage. The webhook verifies Svix signatures against the raw request body and records provider delivery state. In-app notifications do not depend on email delivery. Without configuration, email is disabled with a non-secret startup warning.
 
 ## Admin schedule-write serialization
 
@@ -62,4 +72,6 @@ Dates use `YYYY-MM-DD`; times use 24-hour `HH:mm`. Slot start/end and cutoff com
 - `.env` is local-only and ignored. `.env.example` contains names and placeholder values only.
 - Manus protected project secrets configure Preview; Vercel public build variables contain only the API origin; Render stores API secrets and the allowed frontend origin.
 - Integration tests use an isolated in-memory replica set and do not use the configured Atlas URI.
+- Resend API, webhook and encryption credentials are backend-only; the email payload is encrypted at rest in MongoDB because password reset links contain bearer tokens.
+- New authentication/reset fields, booking history, email-outbox collection and indexes are additive; startup creates indexes but does not drop existing indexes or rewrite existing bookings.
 - `render.yaml` and `vercel.json` are deployment preparation; repository configuration does not mean a service was actually deployed.
