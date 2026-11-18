@@ -13,11 +13,23 @@ import userRoutes from './routes/userRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import { requireCsrfForCookieRequests } from './middleware/csrf.js';
 import { verifyResendWebhook } from './services/emailWebhookService.js';
-import { asyncHandler } from './utils/ApiError.js';
+import { ApiError, asyncHandler } from './utils/ApiError.js';
 
 export const app = express();
 
 const allowedOrigins = new Set(env.clientOrigins);
+
+function allowOrigin(origin, callback) {
+  if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+  return callback(new ApiError(403, 'This origin is not allowed by CORS.'));
+}
+
+const corsOptions = {
+  origin: allowOrigin,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+};
 
 app.disable('x-powered-by');
 app.use((req, res, next) => {
@@ -39,24 +51,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.has(origin)) return callback(null, true);
-    return callback(new Error('This origin is not allowed by CORS.'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-}));
-app.options('*', cors({
-  origin(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.has(origin)) return callback(null, true);
-    return callback(new Error('This origin is not allowed by CORS.'));
-  },
-  credentials: true,
-}));
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.post('/api/webhooks/resend', express.raw({ type: 'application/json', limit: '256kb' }), asyncHandler(async (req, res) => {
   const result = await verifyResendWebhook(req.body, {
     id: req.get('svix-id'),

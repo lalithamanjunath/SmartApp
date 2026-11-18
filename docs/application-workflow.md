@@ -193,6 +193,7 @@ intended environment.
 | Reset email is not sent | Confirm all Resend, webhook, encryption-key and client-URL environment values are set on the API; review non-secret worker logs and Resend delivery events. |
 | Booking calendar has no available dates | Create future slots as an administrator; confirm slots are `available` and use UTC. |
 | Sign-in works locally but not on the deployed site | Check HTTPS, the Vercel `VITE_API_BASE_URL`, Render `CLIENT_ORIGIN`, and `COOKIE_SAME_SITE=none` with `COOKIE_SECURE=true`. Browser third-party-cookie restrictions can affect cross-origin cookie sessions. |
+| Browser reports 500 on `/api/v1/auth/csrf`, or CORS 403 after the API update | Check the browser request's exact `Origin` header and add that frontend origin to Render's `CLIENT_ORIGIN` allowlist. Do not use a wildcard with credentialed CORS. |
 | A slot could not be booked | Refresh; another member may have claimed it, or its start time may no longer be in the future. |
 | Administrator pages redirect or return forbidden | Confirm the account was created by the admin initializer and is active; public registration creates members only. |
 

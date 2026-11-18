@@ -95,6 +95,6 @@ Set backend-only `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_WEBHOOK_SECRET`,
 ## Status codes and safety
 
 - `200` successful read/update/logout/cancel; `201` registration, slot or booking creation; `202` accepted password-reset request.
-- `400` invalid input, expired/used token or past/invalid date/time; `401` missing/invalid session or bad credentials; `403` wrong role or failed CSRF check; `404` unknown/not-owned record; `409` duplicate/conflicting/unavailable state; `429` authentication/reset rate limit; `503` missing/unavailable MongoDB or required service configuration.
+- `400` invalid input, expired/used token or past/invalid date/time; `401` missing/invalid session or bad credentials; `403` wrong role, failed CSRF check or CORS origin not in the allowlist; `404` unknown/not-owned record; `409` duplicate/conflicting/unavailable state; `429` authentication/reset rate limit; `503` missing/unavailable MongoDB or required service configuration.
 - IDs are MongoDB ObjectId strings. Dates are ISO `YYYY-MM-DD`; appointment times are 24-hour `HH:mm` values interpreted in UTC. API timestamps use MongoDB/JavaScript dates. All slot/booking ownership, status transitions, cancellation cutoffs and admin authorization are checked by the backend.
 - The API never returns password hashes, session JWTs, signing secrets, database credentials or private environment values.

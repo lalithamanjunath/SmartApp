@@ -55,11 +55,15 @@ export const env = {
 export function validateAuthConfig() {
   if (!env.jwtSecret || env.jwtSecret.length < 32) {
     const error = new Error('Authentication is not configured. Set JWT_SECRET to at least 32 characters.');
+    error.name = 'ConfigurationError';
+    error.code = 'JWT_SECRET_INVALID';
     error.status = 503;
     throw error;
   }
   if (!/^(\d+)(s|m|h|d)$/.test(env.jwtExpiresIn)) {
     const error = new Error('Authentication is not configured. JWT_EXPIRES_IN must be a duration such as 8h or 30m.');
+    error.name = 'ConfigurationError';
+    error.code = 'JWT_EXPIRES_IN_INVALID';
     error.status = 503;
     throw error;
   }

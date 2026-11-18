@@ -45,7 +45,7 @@ No Atlas-backed or production request-latency benchmark was run. Notification da
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| API integration suite | Pass | `pnpm test`: 15 tests passed, 0 failed. Coverage now includes reset expiry/reuse and auth-version invalidation, signed CSRF checks, encrypted email retry/idempotency and webhook signatures, expired-lease recovery, duplicate reminder email prevention, notification persistence with email disabled, rescheduling history/ownership/cutoff/concurrency, paginated member history and query/index assertions. The final test process exited 0 without teardown errors. |
+| API integration suite | Pass | `pnpm test`: 18 tests passed, 0 failed. Coverage includes reset expiry/reuse and auth-version invalidation, CSRF/CORS configuration, encrypted email retry/idempotency and webhook signatures, expired-lease recovery, duplicate reminder email prevention, notification persistence with email disabled, rescheduling history/ownership/cutoff/concurrency, paginated member history and query/index assertions. A non-fatal MongoDB Memory Server `ECONNRESET` appeared during replica-set teardown; the test process exited 0. |
 | Backend syntax | Pass | `node --check` passed for all JavaScript files under `server/src`, `server/scripts` and `server/test`. |
 | Production frontend build | Pass | `pnpm build` completed. Entry bundle: 447.84 kB (137.15 kB gzip). `AdminDashboardPage`: 10.17 kB (2.22 kB gzip); deferred chart module: 431.94 kB (117.42 kB gzip). |
 | Admin dashboard split | Measured bundle change | The dashboard page module fell from the previously measured 440.25 kB to 10.17 kB (97.7% smaller); chart code now loads separately near the viewport. The entry bundle is 1.25 kB larger than the prior 446.59 kB baseline, and total chart bytes were not removed. This is deferred route/component loading, not a claim of overall bundle-size or latency improvement. |
@@ -55,3 +55,9 @@ No Atlas-backed or production request-latency benchmark was run. Notification da
 | Live provider / Atlas checks | Not performed | Tests mock Resend and verify signed webhook delivery events. No provider credentials or connected production Atlas database were used; actual mail delivery, Atlas query statistics and production API latency remain to be verified after deployment. |
 
 Schema additions are backward-compatible defaults and new indexes/collections; the startup process creates indexes but does not drop existing indexes or rewrite existing booking records. See [`database-design.md`](./database-design.md) for the exact additions and operational notes.
+
+## CSRF endpoint/CORS investigation — 2026-11-18
+
+The CSRF route is registered at `GET /api/v1/auth/csrf` without `requireDatabase` or `requireAuth`. It executes after CORS, JSON parsing, cookie parsing and the general CSRF guard (which skips GET). Token issuance requires valid `JWT_SECRET` and `JWT_EXPIRES_IN`, then sets the CSRF cookie; it does not query MongoDB. Invalid JWT configuration returns an explicit `503`.
+
+A live request to the deployed endpoint returned `200` with no `Origin` and with the repository's sample Vercel origin. A request using an unlisted origin reproduced the same `500` behavior: the CORS callback passed `Error: This origin is not allowed by CORS.`, which had no status and was mapped to `500`. CORS rejection now uses an explicit `403 ApiError`; the allowlist remains enforced. Regression tests cover DB-independent token issuance, production cookie flags, invalid JWT configuration and rejected GET/OPTIONS origins. If the real browser origin is not currently listed, add that exact origin to Render's `CLIENT_ORIGIN`; no origin value was inferred or changed.

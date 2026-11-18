@@ -44,6 +44,7 @@ export function csrfCookieOptions() {
 }
 
 export function issueCsrfToken(req, res) {
+  validateAuthConfig();
   const existing = req.cookies?.tandem_csrf;
   const token = existing && isValidCsrfToken(existing) ? existing : createCsrfToken();
   if (token !== existing) res.cookie('tandem_csrf', token, csrfCookieOptions());
